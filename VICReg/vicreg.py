@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, field
 from pydantic import BaseModel
 import typing as tp
 from pathlib import Path
+from utils import TrainTransform
+
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -39,9 +41,16 @@ class VICreg(BaseModel):
     
     def __post_init__(self) -> None:
         wandb.init(asdict(self))
+        
+        
+#def init_dataset():
+    
+    
     
 @pyrallis.wrap()
 def main(cfg: VICreg):
+    transforms: TrainTransform = TrainTransform()
+    
     
     
     
