@@ -14,7 +14,7 @@ import uuid
 from typing import Optional, Callable
 
 #Utils import
-from utils import set_seed
+from utils import set_seed, ReplayBuffer
 from video import VideoRecorder
 
 
@@ -27,14 +27,15 @@ class CILOT_cfg:
     seed: int = field(default=42)
     save_video: bool = field(default=True)
     work_dir: str = "expr/"
-    
+    delta: int = 1 # window size to check for next states
     #Wandb logger params
     project: str = "CILOT"
     group: str = "CILOT"
     name: str = "CILOT_VICreg"
     exper_name: str = "pendulum"
     
-    
+    #replay buffer
+    capacity: int = 1e6
     #GW params
     gw_include_actions_expert: bool = field(default=False)
     def __post_init__(self):
@@ -76,15 +77,13 @@ def entry(cfg: CILOT_cfg):
     if cfg.gw_include_actions_expert:
             traj_expert = np.concatenate((traj_expert, dataset_expert['actions']), axis=1)
     
-    #maybe wrape env (reward normalization?)
-    
-    agent_obs_dim = env_agent.observation_space.shape[0]
-    agent_action_dim = env_agent.action_space.shape[0]
-    
-    replay_buffer = ReplayBuffer(self.env.observation_space.shape,
-                                 self.env.action_space.shape,
-                                 int(cfg.replay_buffer_capacity),
-                                 self.device, cfg)
+    #maybe wrape env (reward normalization?)    
+    replay_buffer = ReplayBuffer(env_agent.observation_space.shape,
+                                 env_agent.action_space.shape,
+                                 int(cfg.capacity),
+                                 device)
+
+
     
 
 
