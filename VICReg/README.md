@@ -1,1 +1,0 @@
-![](vicreg_archi_full.jpg)
