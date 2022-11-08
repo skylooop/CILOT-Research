@@ -70,5 +70,6 @@ class ReplayBuffer:
         print(f"Dataset size: {n_transitions}")
     
     
-def compute_initialization()
+def compute_initialization(batch_trajectories_expert, batch_trajectories_agent):
+    
     

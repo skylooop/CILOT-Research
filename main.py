@@ -23,6 +23,29 @@ from utils import set_seed, ReplayBuffer, compute_initialization
 from video import VideoRecorder
 from tqdm import trange
 
+
+def compute_mean_std(states: np.ndarray, eps: float) -> tp.Tuple[np.ndarray, np.ndarray]:
+    mean = states.mean(0)
+    std = states.std(0) + eps
+    return mean, std
+
+
+def normalize_states(states: np.ndarray, mean: np.ndarray, std: np.ndarray):
+    return (states - mean) / std
+
+
+def wrap_env(
+    env: gym.Env,
+    state_mean: tp.Union[np.ndarray, float] = 0.0,
+    state_std: tp.Union[np.ndarray, float] = 1.0,
+) -> gym.Env:
+    def normalize_state(state):
+        return (state - state_mean) / state_std
+
+    env = gym.wrappers.TransformObservation(env, normalize_state)
+    return env
+
+
 @dataclass
 class CILOT_cfg:
     device: str = "cuda"
@@ -47,6 +70,10 @@ class CILOT_cfg:
     capacity: int = 1e6
     #GW params
     gw_include_actions_expert: bool = field(default=False)
+    metric_expert: str = "euclidean"
+    metric_agent: str = "euclidean"
+    norm_agent_with_expert: bool = field(default=True)
+    
     def __post_init__(self):
         self.group = self.name + "expert_" + self.exper_name
 
@@ -76,9 +103,13 @@ def entry(cfg: CILOT_cfg):
     set_seed(cfg.seed, env_agent)
     device = torch.device(cfg.device)
     #normalize rewards of agent ? 
+    if cfg.norm_agent_with_expert:
+        state_mean_expert, state_std_expert = compute_mean_std(dataset_agent["observations"], eps=1e-3)
+        env_agent = wrap_env(env_agent, state_mean=state_mean_expert, state_std=state_std_expert)
     
     dataset_agent = d4rl.qlearning_dataset(env_agent) 
     dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
+    
     
     video_recorder = VideoRecorder(
             cfg.work_dir if cfg.save_video else None)
@@ -112,7 +143,7 @@ def entry(cfg: CILOT_cfg):
         batch_trajectories_expert = vmap(lambda x: x.to(device), in_dims=0)(batch_trajectories_expert) #[b.to(cfg.device) for b in batch_trajectories_expert]
         
         T_init = compute_initialization(batch_trajectories_expert,
-                                        batch_trajectories_agent)
+                                        batch_trajectories_agent) # GW
         
         
         
