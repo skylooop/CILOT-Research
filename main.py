@@ -19,7 +19,7 @@ from functorch import vmap
 TensorBatch = tp.List[torch.Tensor]
 
 #Utils import
-from utils import set_seed, ReplayBuffer, compute_initialization
+from utils_ot import set_seed, ReplayBuffer, compute_initialization, align_datasets
 from video import VideoRecorder
 from tqdm import trange
 
@@ -104,40 +104,45 @@ def entry(cfg: CILOT_cfg):
     
     set_seed(cfg.seed, env_agent)
     device = torch.device(cfg.device)
+    
+    dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
+    
     #normalize rewards of agent ? 
     if cfg.norm_agent_with_expert:
-        state_mean_expert, state_std_expert = compute_mean_std(dataset_agent["observations"], eps=1e-3)
+        state_mean_expert, state_std_expert = compute_mean_std(dataset_expert["observations"], eps=1e-3)
         env_agent = wrap_env(env_agent, state_mean=state_mean_expert, state_std=state_std_expert)
     
     dataset_agent = d4rl.qlearning_dataset(env_agent) 
-    dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
+    #dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
     
     
     video_recorder = VideoRecorder(
             cfg.work_dir if cfg.save_video else None)
     
     if cfg.gw_include_actions_expert:
-            dataset_expert = np.concatenate((dataset_expert, dataset_expert['actions']), axis=1)
+            dataset_expert = np.concatenate((dataset_expert,
+                                             dataset_expert['actions']), axis=1)
     
     
     #maybe wrap env (reward normalization?)    
-    replay_buffer_agent = ReplayBuffer(env_agent.observation_space.shape,
-                                 env_agent.action_space.shape,
-                                 int(cfg.capacity),
-                                 device)
+    replay_buffer_agent = ReplayBuffer(dataset_agent['observations'].shape[0],
+                                env_agent.observation_space.shape,
+                                env_agent.action_space.shape,
+                                device)
     
-    replay_buffer_expert = ReplayBuffer(env_expert.observation_space.shape,
-                                 env_expert.action_space.shape,
-                                 int(cfg.capacity),
-                                 device)
+    replay_buffer_expert = ReplayBuffer(
+                                dataset_expert['observations'].shape[0],
+                                env_expert.observation_space.shape,
+                                env_expert.action_space.shape,
+                                device)
     replay_buffer_agent.load_d4rl_dataset(dataset_agent)
     replay_buffer_expert.load_d4rl_dataset(dataset_expert)
     
-    D_agent = torch.concat([replay_buffer_agent._states, replay_buffer_agent._next_states])
-    D_expert = torch.concat([replay_buffer_expert._states, replay_buffer_expert._next_states])
+    D_agent = torch.concat([replay_buffer_agent._states, replay_buffer_agent._next_states], dim=1)
+    D_expert = torch.concat([replay_buffer_expert._states, replay_buffer_expert._next_states], dim=1)
     
     # Computing 1M for GW is bad
-    for step in trange(cfg.num_train_steps, ncols=200):
+    for step in trange(int(cfg.num_train_steps), ncols=200):
         batch_trajectories_agent = D_agent[step:cfg.batch_size, :] #????
         batch_trajectories_expert = D_expert[step:cfg.batch_size, :]
         
@@ -152,7 +157,7 @@ def entry(cfg: CILOT_cfg):
                                         cfg.sinkhorn_reg) # GW
         
         #Write function to align best pairs based on T_init
-        D_expert, D_agent = align_datasets() 
+        D_expert, D_agent = align_datasets(T_init, D_agent, D_expert) 
         
         
         
