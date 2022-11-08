@@ -73,6 +73,8 @@ class CILOT_cfg:
     metric_expert: str = "euclidean"
     metric_agent: str = "euclidean"
     norm_agent_with_expert: bool = field(default=True)
+    entropic: bool = field(default=True)
+    sinkhorn_reg: float = field(default=5e-3)
     
     def __post_init__(self):
         self.group = self.name + "expert_" + self.exper_name
@@ -143,7 +145,15 @@ def entry(cfg: CILOT_cfg):
         batch_trajectories_expert = vmap(lambda x: x.to(device), in_dims=0)(batch_trajectories_expert) #[b.to(cfg.device) for b in batch_trajectories_expert]
         
         T_init = compute_initialization(batch_trajectories_expert,
-                                        batch_trajectories_agent) # GW
+                                        batch_trajectories_agent,
+                                        cfg.metric_expert,
+                                        cfg.metric_agent,
+                                        cfg.entropic,
+                                        cfg.sinkhorn_reg) # GW
+        
+        #Write function to align best pairs based on T_init
+        D_expert, D_agent = align_datasets() 
+        
         
         
         
