@@ -5,6 +5,7 @@ import ot
 import d4rl
 import gym
 from dataclasses import field, dataclass, asdict
+import typing as tp
 import pickle as pkl
 import torch
 import torch.nn as nn
@@ -12,11 +13,15 @@ import torch.nn.functional as F
 import wandb
 import uuid
 from typing import Optional, Callable
+from functorch import vmap
+
+
+TensorBatch = tp.List[torch.Tensor]
 
 #Utils import
-from utils import set_seed, ReplayBuffer
+from utils import set_seed, ReplayBuffer, compute_initialization
 from video import VideoRecorder
-
+from tqdm import trange
 
 @dataclass
 class CILOT_cfg:
@@ -28,6 +33,10 @@ class CILOT_cfg:
     save_video: bool = field(default=True)
     work_dir: str = "expr/"
     delta: int = 1 # window size to check for next states
+    num_train_steps: int = 1e6
+    eval_steps: int = 5000
+    batch_size: int = 100 # trajectory length
+        
     #Wandb logger params
     project: str = "CILOT"
     group: str = "CILOT"
@@ -68,22 +77,51 @@ def entry(cfg: CILOT_cfg):
     device = torch.device(cfg.device)
     #normalize rewards of agent ? 
     
-    dataset_agent = d4rl.qlearning_dataset(env_agent) # (999999, 17)
-    dataset_expert = d4rl.qlearning_dataset(env_expert) # ()
+    dataset_agent = d4rl.qlearning_dataset(env_agent) 
+    dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
     
     video_recorder = VideoRecorder(
             cfg.work_dir if cfg.save_video else None)
     
     if cfg.gw_include_actions_expert:
-            traj_expert = np.concatenate((traj_expert, dataset_expert['actions']), axis=1)
+            dataset_expert = np.concatenate((dataset_expert, dataset_expert['actions']), axis=1)
     
-    #maybe wrape env (reward normalization?)    
-    replay_buffer = ReplayBuffer(env_agent.observation_space.shape,
+    
+    #maybe wrap env (reward normalization?)    
+    replay_buffer_agent = ReplayBuffer(env_agent.observation_space.shape,
                                  env_agent.action_space.shape,
                                  int(cfg.capacity),
                                  device)
-
-
+    
+    replay_buffer_expert = ReplayBuffer(env_expert.observation_space.shape,
+                                 env_expert.action_space.shape,
+                                 int(cfg.capacity),
+                                 device)
+    replay_buffer_agent.load_d4rl_dataset(dataset_agent)
+    replay_buffer_expert.load_d4rl_dataset(dataset_expert)
+    
+    D_agent = torch.concat([replay_buffer_agent._states, replay_buffer_agent._next_states])
+    D_expert = torch.concat([replay_buffer_expert._states, replay_buffer_expert._next_states])
+    
+    # Computing 1M for GW is bad
+    for step in trange(cfg.num_train_steps, ncols=200):
+        batch_trajectories_agent = D_agent[step:cfg.batch_size, :] #????
+        batch_trajectories_expert = D_expert[step:cfg.batch_size, :]
+        
+        batch_trajectories_agent = vmap(lambda x: x.to(device), in_dims=0)(batch_trajectories_agent) #[b.to(cfg.device) for b in batch_trajectories_agent]
+        batch_trajectories_expert = vmap(lambda x: x.to(device), in_dims=0)(batch_trajectories_expert) #[b.to(cfg.device) for b in batch_trajectories_expert]
+        
+        T_init = compute_initialization(batch_trajectories_expert,
+                                        batch_trajectories_agent)
+        
+        
+        
+        
+        
+        
+        
+        
+        
     
 
 
