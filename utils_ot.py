@@ -2,13 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from typing import Optional, Callable, Tuple, Union, Dict
+from typing import Optional, Callable, Tuple, Union, Dict, List
 import os
 import numpy as np
 import random
 import gym
 from sklearn.metrics import pairwise_distances
 import ot
+
+TensorBatch = List[torch.Tensor]
 
 def set_seed(
     seed: int, env: Optional[gym.Env] = None, deterministic_torch: bool = False
@@ -66,11 +68,11 @@ class ReplayBuffer:
 
 
         print(f"Dataset size: {n_transitions}")
-    
+        
     
 def compute_initialization(expert_ds, agent_ds, expert_metric,
                            agent_metric, entropic, sinkhorn_reg):
-    distances_expert = pairwise_distances(expert_ds, agent_ds, metric=expert_metric) # (s_i, s_{i+1})
+    distances_expert = pairwise_distances(expert_ds, expert_ds, metric=expert_metric) # (s_i, s_{i+1})
     distances_agent = pairwise_distances(agent_ds, agent_ds, metric=agent_metric)
     
     p = np.zeros(len(expert_ds)) + 1. / len(expert_ds)
@@ -84,7 +86,7 @@ def compute_initialization(expert_ds, agent_ds, expert_metric,
         T = ot.gromov.entropic_gromov_wasserstein(
                 distances_expert, distances_agent, 
                 p, q,
-                'square_loss', epsilon=sinkhorn_reg, max_iter=1000, tol=1e-9)
+                'square_loss', epsilon=sinkhorn_reg, max_iter=1000, tol=1e-7)
     else:
         T = ot.gromov.gromov_wasserstein(distances_expert,
                                                        distances_agent, p, q, 
@@ -97,8 +99,11 @@ def compute_initialization(expert_ds, agent_ds, expert_metric,
     return tens * T
 
 
-def align_datasets(T_init, D_agent, D_expert):
-    pass
+def align_pairs(T_init, D_agent):
+    max_from_agent = torch.argmax(torch.from_numpy(T_init), dim=1)
+    agent_maxes = D_agent[max_from_agent, :]
+
+    return agent_maxes
     
     
     
