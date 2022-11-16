@@ -91,19 +91,21 @@ def compute_initialization(expert_ds, agent_ds, expert_metric,
         T = ot.gromov.gromov_wasserstein(distances_expert,
                                                        distances_agent, p, q, 
                                                        'square_loss')
+    '''
     constC, hExpert, hAgent = ot.gromov.init_matrix(distances_expert, distances_agent, 
                                                     p, q, 
                                                     loss_fun='square_loss')
     tens = ot.gromov.tensor_product(constC, hExpert, hAgent, T)
+    '''
     
-    return tens * T
+    return T
 
 
 def align_pairs(T_init, D_agent):
-    max_from_agent = torch.argmax(torch.from_numpy(T_init), dim=1)
-    agent_maxes = D_agent[max_from_agent, :]
+    #max_from_agent = torch.argmax(torch.from_numpy(T_init), dim=1)
+    #agent_maxes = D_agent[max_from_agent, :]
 
-    return agent_maxes
+    pass
     
     
     

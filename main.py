@@ -99,6 +99,7 @@ def entry(cfg: CILOT_cfg):
     if cfg.logger == "wandb":
         pass
         #load_wandb(asdict(cfg))
+        
     env_agent = gym.make(cfg.agent, render_mode="rgb_array_list")
     env_expert = gym.make(cfg.expert)
     
@@ -145,13 +146,15 @@ def entry(cfg: CILOT_cfg):
     division_states = replay_buffer_expert._actions.shape[0] + 1
 
     # Computing 1M for GW is bad
-    for step in trange(max(D_agent.shape[0], D_expert.shape[0]) // cfg.gw_size_comp, ncols=200):
+    # until first done
+    # 
+    for step in trange(1): #max(D_agent.shape[0], D_expert.shape[0]) // cfg.gw_size_comp, ncols=200):
         if step == 0:
             stride = 0
         else:
             stride = 500
             
-        batch_trajectories_agent = D_agent[stride : cfg.gw_size_comp, :] #????
+        batch_trajectories_agent = D_agent[stride : cfg.gw_size_comp, :]
         batch_trajectories_expert = D_expert[stride : cfg.gw_size_comp, :]
         
         batch_trajectories_agent = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_agent) #[b.to(cfg.device) for b in batch_trajectories_agent]
@@ -167,12 +170,18 @@ def entry(cfg: CILOT_cfg):
         #Write function to align best pairs based on T_init
         aligned_states = align_pairs(T_init, \
                                         batch_trajectories_agent)
-        if step != 0:
+        loss = batch_trajectories_expert - aligned_states
+        
+        '''if step != 0:
             merged_states = merged_states[:, :division_states]
             merged_states = torch.concat([merged_states, aligned_states], dim=1)
         else:
-            merged_states = torch.concat([batch_trajectories_expert, aligned_states], dim=1)
-            
+            #tuple
+            merged_states = torch.concat([batch_trajectories_expert, aligned_states], dim=1)'''
+        
+        # compute embeddings of initial datasets, then concat based on 
+        # T * u справа умножить на матрицу от эксперта (барицентрическая проекция) потом сравниваем с экспертом
+        
         stride = cfg.gw_size_comp
         cfg.gw_size_comp += 2000
         
