@@ -15,7 +15,7 @@ import uuid
 from typing import Optional, Callable
 from functorch import vmap
 
-
+device = torch.device("cuda")
 TensorBatch = tp.List[torch.Tensor]
 
 #Utils import
@@ -45,7 +45,6 @@ def wrap_env(
     env = gym.wrappers.TransformObservation(env, normalize_state)
     return env
 
-
 @dataclass
 class CILOT_cfg:
     device: str = "cuda"
@@ -68,6 +67,7 @@ class CILOT_cfg:
     
     #replay buffer
     capacity: int = 1e6
+    
     #GW params
     gw_include_actions_expert: bool = field(default=False)
     metric_expert: str = "euclidean"
@@ -76,10 +76,11 @@ class CILOT_cfg:
     entropic: bool = field(default=True)
     sinkhorn_reg: float = field(default=5e-3)
     gw_size_comp: int = field(default=2000)
+    mode: str = "gw" # gw/infoot
     
     def __post_init__(self):
         self.group = self.name + "expert_" + self.exper_name
-
+        print(f"Optimal transport T")
         
 def load_wandb(cfg: dict) -> None:
     wandb.init(
@@ -115,9 +116,6 @@ def entry(cfg: CILOT_cfg):
         env_agent = wrap_env(env_agent, state_mean=state_mean_expert, state_std=state_std_expert)
     
     dataset_agent = d4rl.qlearning_dataset(env_agent) 
-    #dataset_expert = d4rl.qlearning_dataset(env_expert) # (999999, 17)
-    
-    
     video_recorder = VideoRecorder(
             cfg.work_dir if cfg.save_video else None)
     
@@ -125,8 +123,7 @@ def entry(cfg: CILOT_cfg):
             dataset_expert = np.concatenate((dataset_expert,
                                              dataset_expert['actions']), axis=1)
     
-    
-    #maybe wrap env (reward normalization?)    
+ 
     replay_buffer_agent = ReplayBuffer(dataset_agent['observations'].shape[0],
                                 env_agent.observation_space.shape,
                                 env_agent.action_space.shape,
@@ -137,6 +134,7 @@ def entry(cfg: CILOT_cfg):
                                 env_expert.observation_space.shape,
                                 env_expert.action_space.shape,
                                 device)
+    
     replay_buffer_agent.load_d4rl_dataset(dataset_agent)
     replay_buffer_expert.load_d4rl_dataset(dataset_expert)
     
@@ -145,65 +143,38 @@ def entry(cfg: CILOT_cfg):
     
     division_states = replay_buffer_expert._actions.shape[0] + 1
 
-    # Computing 1M for GW is bad
-    # until first done
-    # 
-    for step in trange(1): #max(D_agent.shape[0], D_expert.shape[0]) // cfg.gw_size_comp, ncols=200):
-        if step == 0:
-            stride = 0
-        else:
-            stride = 500
-            
-        batch_trajectories_agent = D_agent[stride : cfg.gw_size_comp, :]
-        batch_trajectories_expert = D_expert[stride : cfg.gw_size_comp, :]
+    for step in trange(1):
+        print("Computing T_init")
         
-        batch_trajectories_agent = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_agent) #[b.to(cfg.device) for b in batch_trajectories_agent]
-        batch_trajectories_expert = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_expert) #[b.to(cfg.device) for b in batch_trajectories_expert]
+        batch_trajectories_agent = D_agent[step : cfg.gw_size_comp, :]
+        batch_trajectories_expert = D_expert[step : cfg.gw_size_comp * 2, :]
         
-        T_init = compute_initialization(batch_trajectories_expert,
+        batch_trajectories_agent = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_agent)
+        batch_trajectories_expert = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_expert)
+        
+        T_init = compute_initialization(cfg.mode,
+                                        batch_trajectories_expert,
                                         batch_trajectories_agent,
                                         cfg.metric_expert,
                                         cfg.metric_agent,
                                         cfg.entropic,
                                         cfg.sinkhorn_reg) # GW
         
-        #Write function to align best pairs based on T_init
         aligned_states = align_pairs(T_init, \
-                                        batch_trajectories_agent)
-        loss = batch_trajectories_expert - aligned_states
+                                        batch_trajectories_agent) # (4000, 34)
+        print(aligned_states.shape)
         
-        '''if step != 0:
-            merged_states = merged_states[:, :division_states]
-            merged_states = torch.concat([merged_states, aligned_states], dim=1)
-        else:
-            #tuple
-            merged_states = torch.concat([batch_trajectories_expert, aligned_states], dim=1)'''
+        
+        
+        #loss = batch_trajectories_expert - aligned_states
         
         # compute embeddings of initial datasets, then concat based on 
         # T * u справа умножить на матрицу от эксперта (барицентрическая проекция) потом сравниваем с экспертом
         
-        stride = cfg.gw_size_comp
-        cfg.gw_size_comp += 2000
         
         
         
         
-        
-        
-        
-        
-        
-        
-    
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
     entry()
 
