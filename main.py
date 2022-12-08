@@ -88,6 +88,7 @@ class CILOT_cfg:
         self.group = self.name + "expert_" + self.exper_name
         self.video_recorder = VideoRecorder(
             self.work_dir if self.save_video else None)
+        self.encoder = Encoder()
         
         print(f"Optimal transport T")
         
@@ -123,7 +124,8 @@ def entry(cfg: CILOT_cfg):
         state_mean_expert, state_std_expert = compute_mean_std(dataset_expert["observations"], eps=1e-3)
         env_agent = wrap_env(env_agent, state_mean=state_mean_expert, state_std=state_std_expert)
     
-    dataset_agent = d4rl.qlearning_dataset(env_agent) 
+    dataset_agent = d4rl.qlearning_dataset(env_agent)
+    
     video_recorder = VideoRecorder(
             cfg.work_dir if cfg.save_video else None)
     
@@ -145,18 +147,19 @@ def entry(cfg: CILOT_cfg):
     replay_buffer_agent.load_d4rl_dataset(dataset_agent)
     replay_buffer_expert.load_d4rl_dataset(dataset_expert)
     
+    # FIX: Take trajectories only up to terminal point
     D_agent = torch.concat([replay_buffer_agent._states, replay_buffer_agent._next_states], dim=1)
     D_expert = torch.concat([replay_buffer_expert._states, replay_buffer_expert._next_states], dim=1)
     
     for step in trange(1):
         print("Computing T_init")
         
-        batch_trajectories_expert = D_agent[step : cfg.gw_size_comp, :] #take first trajectory of expert
+        batch_trajectories_expert = D_expert[step : cfg.gw_size_comp, :] #take first trajectory of expert
         batch_trajectories_expert = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_expert)
         trajectory_slice = 0
         
         for t_bar in range(1, 4): #take 3 trajectories from 
-            batch_trajectories_agent = D_expert[trajectory_slice : cfg.gw_size_comp * t_bar, :]
+            batch_trajectories_agent = D_agent[trajectory_slice : cfg.gw_size_comp * t_bar, :]
             trajectory_slice = cfg.gw_size_comp
             
             batch_trajectories_agent = vmap(lambda x: x.to("cpu"), in_dims=0)(batch_trajectories_expert)
@@ -164,30 +167,22 @@ def entry(cfg: CILOT_cfg):
                 merged_trajectories_agent = batch_trajectories_agent
             else:    
                 merged_trajectories_agent = torch.vstack([merged_trajectories_agent, batch_trajectories_agent])
-        
+
+        agent_traj_embeds = None #embedding of merged_traj
+        M = pairwise_distances(batch_trajectories_expert, agent_traj_embeds)
+                
+                
         #compute T init between first trajectory of agent and several traj of agent
-        if step == 0:
-            T_init = compute_initialization(cfg.mode,
+        T_init = compute_initialization(cfg.mode,
                                             batch_trajectories_expert,
                                             merged_trajectories_agent,
                                             cfg.metric_expert,
                                             cfg.metric_agent,
                                             cfg.entropic,
                                             cfg.sinkhorn_reg, device=device) # GW
-        #else compute representation:     
-        barycenters = align_pairs(T_init, \
-                                        merged_trajectories_agent)
+            
+        loss = torch.sum(T_init * M)     
         
-        
-
-
-        
-        #Update T
-        print(barycenters.shape)
-        
-        
-        
-        #loss = batch_trajectories_expert - aligned_states
         
         # compute embeddings of initial datasets, then concat based on 
         # T * u справа умножить на матрицу от эксперта (барицентрическая проекция) потом сравниваем с экспертом
