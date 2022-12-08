@@ -71,7 +71,7 @@ class ReplayBuffer:
         
     
 def compute_initialization(mode, expert_ds, agent_ds, expert_metric,
-                           agent_metric, entropic, sinkhorn_reg):
+                           agent_metric, entropic, sinkhorn_reg, device):
     distances_expert = pairwise_distances(expert_ds, expert_ds, metric=expert_metric) # (s_i, s_{i+1})
     distances_agent = pairwise_distances(agent_ds, agent_ds, metric=agent_metric)
     
@@ -90,11 +90,22 @@ def compute_initialization(mode, expert_ds, agent_ds, expert_metric,
             
     # else mode == "infoot"
     
-    return torch.from_numpy(T, dtype=torch.double)
+    T = torch.from_numpy(T).to(device)
+    T.requires_grad = False
+    
+    return T
 
 
-def align_pairs(T_init, agent_trajectories):
-    return torch.matmul(T_init, agent_trajectories)
+def euclidean_distance(x, y):
+    "Returns the matrix of $|x_i-y_j|^2$."
+    x_col = x.unsqueeze(1)
+    y_lin = y.unsqueeze(0)
+    c = torch.sqrt(torch.sum((torch.abs(x_col - y_lin)) ** 2, 2))
+    return c
+
+def align_pairs(T, agent_trajectories):
+    agent_trajectories = agent_trajectories.to(T.device)
+    return torch.matmul(T, agent_trajectories)
     
     
     
