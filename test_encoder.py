@@ -15,7 +15,6 @@ class Encoder(nn.Module):
             nn.BatchNorm1d(128),
             
             nn.Linear(128, state_shape),
-            nn.ReLU()
         )
     
     def forward(self, x):
