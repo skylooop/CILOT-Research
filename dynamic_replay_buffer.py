@@ -1,45 +1,17 @@
 import collections
-from abc import ABC, abstractmethod
 from typing import Optional
-import os
-import d4rl
+
 import gym
 import numpy as np
 from tqdm import tqdm
 import ot
 
+from agent.iql.dataset_utils import D4RLDataset
+from compute_rewards import RewardsScaler, RewardsExpert
 
 Batch = collections.namedtuple(
     'Batch',
     ['observations', 'actions', 'rewards', 'masks', 'next_observations'])
-
-
-
-class RewardsExpert(ABC):
-
-    def compute_rewards(self, observations: np.ndarray, next_observations: np.ndarray, dones_float: np.ndarray) -> np.ndarray:
-        assert dones_float[-1] > 0.5
-        i0 = 0
-        rewards = []
-        for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
-            rewards.append(self.compute_rewards_one_episode(observations[i0:i1+1], next_observations[i0:i1+1]))
-            i0 = i1+1
-
-        return np.concatenate(rewards)
-
-    @abstractmethod
-    def compute_rewards_one_episode(self, observations: np.ndarray, next_observations: np.ndarray) -> np.ndarray:
-        pass
-
-
-class RewardsScaler(ABC):
-    @abstractmethod
-    def init(self, rewards: np.ndarray) -> None:
-       pass
-
-    @abstractmethod
-    def scale(self, rewards: np.ndarray) -> np.ndarray:
-        pass
 
 
 class Dataset(object):
@@ -64,56 +36,16 @@ class Dataset(object):
                      next_observations=self.next_observations[indx])
 
 
-class D4RLDataset(Dataset):
-    def __init__(self,
-                 env: gym.Env,
-                 clip_to_eps: bool = True,
-                 eps: float = 1e-5):
-        if os.path.isfile(f"./tmp/dataset_{env.spec.id}.npz"):
-            dataset = dict(np.load(f"./tmp/dataset_{env.spec.id}.npz"))
-        else:
-            dataset = d4rl.qlearning_dataset(env)
-            np.savez(f"./tmp/dataset_{env.spec.id}.npz", **dataset)
-            print("saved")
-
-        if clip_to_eps:
-            lim = 1 - eps
-            dataset['actions'] = np.clip(dataset['actions'], -lim, lim)
-
-        dones_float = np.zeros_like(dataset['rewards'])
-
-        for i in range(len(dones_float) - 1):
-            if np.linalg.norm(dataset['observations'][i + 1] -
-                              dataset['next_observations'][i]
-                              ) > 1e-6 or dataset['terminals'][i] == 1.0:
-                dones_float[i] = 1
-            else:
-                dones_float[i] = 0
-
-        dones_float[-1] = 1
-
-        super().__init__(dataset['observations'].astype(np.float32),
-                         actions=dataset['actions'].astype(np.float32),
-                         rewards=dataset['rewards'].astype(np.float32),
-                         masks=1.0 - dataset['terminals'].astype(np.float32),
-                         dones_float=dones_float.astype(np.float32),
-                         next_observations=dataset['next_observations'].astype(
-                             np.float32),
-                         size=len(dataset['observations']))
-
-
-class ReplayBufferWithDynamicRewards(Dataset):
-
-    def __init__(self, observation_space: gym.spaces.Box, action_dim: int, capacity: int,
-                 rewards_scaler: RewardsScaler,
-                 rewards_expert: RewardsExpert):
+class ReplayBuffer(Dataset):
+    def __init__(self, observation_space: gym.spaces.Box, action_dim: int,
+                 capacity: int):
 
         observations = np.empty((capacity, *observation_space.shape),
                                 dtype=observation_space.dtype)
         actions = np.empty((capacity, action_dim), dtype=np.float32)
-        rewards = np.empty((capacity,), dtype=np.float32)
-        masks = np.empty((capacity,), dtype=np.float32)
-        dones_float = np.empty((capacity,), dtype=np.float32)
+        rewards = np.empty((capacity, ), dtype=np.float32)
+        masks = np.empty((capacity, ), dtype=np.float32)
+        dones_float = np.empty((capacity, ), dtype=np.float32)
         next_observations = np.empty((capacity, *observation_space.shape),
                                      dtype=observation_space.dtype)
         super().__init__(observations=observations,
@@ -129,6 +61,26 @@ class ReplayBufferWithDynamicRewards(Dataset):
         self.insert_index = 0
         self.capacity = capacity
 
+    def insert(self, observation: np.ndarray, action: np.ndarray,
+               reward: float, mask: float, done_float: float,
+               next_observation: np.ndarray):
+        self.observations[self.insert_index] = observation
+        self.actions[self.insert_index] = action
+        self.rewards[self.insert_index] = reward
+        self.masks[self.insert_index] = mask
+        self.dones_float[self.insert_index] = done_float
+        self.next_observations[self.insert_index] = next_observation
+
+        self.insert_index = (self.insert_index + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+
+
+class ReplayBufferWithDynamicRewards(ReplayBuffer):
+
+    def __init__(self, observation_space: gym.spaces.Box, action_dim: int, capacity: int,
+                 rewards_scaler: RewardsScaler,
+                 rewards_expert: RewardsExpert):
+        super().__init__(observation_space, action_dim, capacity)
 
         self.observations_cur = []
         self.actions_cur = []
@@ -166,7 +118,8 @@ class ReplayBufferWithDynamicRewards(Dataset):
         print("rewards:", np.min(self.rewards[:self.size]), np.mean(self.rewards[:self.size]), np.max(self.rewards[:self.size]))
 
     def insert(self, observation: np.ndarray, action: np.ndarray,
-               mask: float, done_float: float, next_observation: np.ndarray):
+               reward: float, mask: float, done_float: float,
+               next_observation: np.ndarray):
 
         self.observations_cur.append(observation)
         self.actions_cur.append(action)

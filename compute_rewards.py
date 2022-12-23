@@ -7,11 +7,23 @@ from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
+from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
+from sklearn import preprocessing
 from tqdm import tqdm
 
-from dynamic_replay_buffer import D4RLDataset, RewardsScaler, RewardsExpert
+from agent.iql.dataset_utils import D4RLDataset
 
 ExpertData = collections.namedtuple('ExpertData', ['observations', 'next_observations'])
+
+
+class RewardsScaler(ABC):
+    @abstractmethod
+    def init(self, rewards: np.ndarray) -> None:
+       pass
+
+    @abstractmethod
+    def scale(self, rewards: np.ndarray) -> np.ndarray:
+        pass
 
 
 class ExpRewardsScaler(RewardsScaler):
@@ -20,8 +32,48 @@ class ExpRewardsScaler(RewardsScaler):
         self.max = np.quantile(np.abs(rewards).reshape(-1), 0.99)
 
     def scale(self, rewards: np.ndarray):
-        return 5 * np.exp((rewards - self.min) / self.max) - 2
+        return 5 * np.exp(rewards / self.max) - 2.5
 
+
+class RewardsExpert(ABC):
+
+    def compute_rewards(self, observations: np.ndarray, next_observations: np.ndarray, dones_float: np.ndarray) -> np.ndarray:
+        assert dones_float[-1] > 0.5
+        i0 = 0
+        rewards = []
+        for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
+            rewards.append(self.compute_rewards_one_episode(observations[i0:i1+1], next_observations[i0:i1+1]))
+            i0 = i1+1
+
+        return np.concatenate(rewards)
+
+    @abstractmethod
+    def compute_rewards_one_episode(self, observations: np.ndarray, next_observations: np.ndarray) -> np.ndarray:
+        pass
+
+
+class Preprocessor:
+    def __init__(self, partial_updates=True,
+                 update_preprocessor_every_episode=1):
+        self.preprocessor = preprocessing.StandardScaler()
+        self.update_preprocessor_every_episode = update_preprocessor_every_episode
+        self.partial_updates = partial_updates
+        self.e = 0
+        self.enabled = True
+
+    def fit(self, observations):
+        if self.e % self.update_preprocessor_every_episode == 0 and self.enabled:
+            self.e += 1
+            if self.partial_updates:
+                self.preprocessor.partial_fit(observations)
+            else:
+                self.preprocessor.fit(observations)
+
+    def transform(self, observations):
+        if self.enabled:
+            return self.preprocessor.transform(observations)
+        else:
+            return observations
 
 
 class OTRewardsExpert(RewardsExpert):
@@ -31,11 +83,16 @@ class OTRewardsExpert(RewardsExpert):
         self.cost_fn = cost_fn
         self.epsilon = epsilon
 
+        self.preproc = Preprocessor()
+
     def compute_rewards_one_episode(self, observations: np.ndarray, next_observations: np.ndarray) -> np.ndarray:
         states_pair = np.concatenate([observations, next_observations], axis=1)
 
-        x = jnp.asarray(states_pair)
-        y = jnp.asarray(self.expert_states_pair)
+        self.preproc.fit(states_pair)
+        x = jnp.asarray(self.preproc.transform(states_pair))
+        y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
+        # x = jnp.asarray(states_pair)
+        # y = jnp.asarray(self.expert_states_pair)
         a = jnp.ones((x.shape[0],)) / x.shape[0]
         b = jnp.ones((y.shape[0],)) / y.shape[0]
 

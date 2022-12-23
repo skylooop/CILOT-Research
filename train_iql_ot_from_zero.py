@@ -1,43 +1,42 @@
 import os
-from typing import Tuple, Dict
+from typing import Tuple
+
 import gym
 import numpy as np
 import tqdm
-import flax.linen as nn
 from absl import app, flags
 from tensorboardX import SummaryWriter
 
 from agent.iql.dataset_utils import D4RLDataset
-from compute_rewards import OTRewardsExpertFactory, OTRewardsExpert, ExpRewardsScaler
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
+from compute_rewards import OTRewardsExpert, OTRewardsExpertFactory, ExpRewardsScaler
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('env_name', 'halfcheetah-medium-v2', 'Environment name.')
+flags.DEFINE_string('env_name', 'halfcheetah-random-v2', 'Environment name.')
 flags.DEFINE_string('expert_env_name', 'halfcheetah-expert-v2', 'Environment name.')
-flags.DEFINE_string('save_dir', './tmp', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 49, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 30,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
-flags.DEFINE_integer('max_steps', int(2e6), 'Number of training steps.')
-flags.DEFINE_integer('num_pretraining_steps', int(1e5),
+flags.DEFINE_integer('max_steps', int(3e6), 'Number of training steps.')
+flags.DEFINE_integer('num_pretraining_steps', 0,
                      'Number of pretraining steps.')
-flags.DEFINE_integer('replay_buffer_size', 200000,
+flags.DEFINE_integer('replay_buffer_size', 300000,
                      'Replay buffer size (=max_steps if unspecified).')
-flags.DEFINE_integer('init_dataset_size', 100000,
+flags.DEFINE_integer('init_dataset_size', 200000,
                      'Offline data size (uses all data if unspecified).')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 
 
-def make_env_and_dataset(env_name: str,
-                         seed: int) -> Tuple[gym.Env, D4RLDataset]:
+def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
 
     env = EpisodeMonitor(env)
@@ -57,23 +56,6 @@ def make_expert() -> OTRewardsExpert:
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
     return OTRewardsExpertFactory().apply(expert_dataset)
-
-
-def update_buffer(observation: np.ndarray, action: np.ndarray,
-               replay_buffer: ReplayBufferWithDynamicRewards, env: gym.Env,
-               summary_writer: SummaryWriter):
-
-    next_observation, reward, done, info = env.step(action)
-    mask = float(not done or 'TimeLimit.truncated' in info)
-
-    replay_buffer.insert(observation, action, mask, float(done), next_observation)
-
-    if done:
-        next_observation = env.reset()
-        for k, v in info['episode'].items():
-            summary_writer.add_scalar(f'training/{k}', v, info['total']['timesteps'])
-
-    return next_observation
 
 
 def evaluate(step: int, agent: Learner, env: gym.Env, num_episodes: int, summary_writer: SummaryWriter):
@@ -107,7 +89,9 @@ def evaluate(step: int, agent: Learner, env: gym.Env, num_episodes: int, summary
 
 
 def main(_):
-    summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, 'tb', str(FLAGS.seed)), write_to_disk=True)
+    summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, 'tb',
+                                                str(FLAGS.seed)),
+                                   write_to_disk=True)
     os.makedirs(FLAGS.save_dir, exist_ok=True)
 
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
@@ -122,15 +106,43 @@ def main(_):
                     env.action_space.sample()[np.newaxis],
                     max_steps=FLAGS.max_steps,
                     temperature=3.0,
-                    expectile=0.7)
+                    expectile=0.9)
 
-    observation = env.reset()
+    eval_returns = []
+    observation, done = env.reset(), False
 
-    for i in tqdm.tqdm(range(FLAGS.num_pretraining_steps + FLAGS.max_steps), smoothing=0.1, disable=not FLAGS.tqdm):
-        if i >= FLAGS.num_pretraining_steps:
+    # Use negative indices for pretraining steps.
+    for i in tqdm.tqdm(range(1 - FLAGS.num_pretraining_steps,
+                             FLAGS.max_steps + 1),
+                       smoothing=0.1,
+                       disable=not FLAGS.tqdm):
+
+        if i == 500000:
+            agent.expectile = 0.7
+            expert.preproc.enabled = False
+
+        if i >= 1:
             action = agent.sample_actions(observation, )
             action = np.clip(action, -1, 1)
-            observation = update_buffer(observation, action, replay_buffer, env, summary_writer)
+            next_observation, reward, done, info = env.step(action)
+
+            if not done or 'TimeLimit.truncated' in info:
+                mask = 1.0
+            else:
+                mask = 0.0
+
+            replay_buffer.insert(observation, action, reward, mask,
+                                 float(done), next_observation)
+            observation = next_observation
+
+            if done:
+                observation, done = env.reset(), False
+                for k, v in info['episode'].items():
+                    summary_writer.add_scalar(f'training/{k}', v,
+                                              info['total']['timesteps'])
+        else:
+            info = {}
+            info['total'] = {'timesteps': i}
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
