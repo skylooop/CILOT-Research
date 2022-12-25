@@ -3,7 +3,7 @@ from typing import Optional
 
 import gym
 import numpy as np
-from tqdm import tqdm
+#from tqdm import tqdm
 import ot
 
 from agent.iql.dataset_utils import D4RLDataset
@@ -48,6 +48,7 @@ class ReplayBuffer(Dataset):
         dones_float = np.empty((capacity, ), dtype=np.float32)
         next_observations = np.empty((capacity, *observation_space.shape),
                                      dtype=observation_space.dtype)
+        
         super().__init__(observations=observations,
                          actions=actions,
                          rewards=rewards,

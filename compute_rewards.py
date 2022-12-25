@@ -13,13 +13,13 @@ from tqdm import tqdm
 
 from agent.iql.dataset_utils import D4RLDataset
 
-ExpertData = collections.namedtuple('ExpertData', ['observations', 'next_observations'])
+ExpertData = collections.namedtuple("ExpertData", ["observations", "next_observations"])
 
 
 class RewardsScaler(ABC):
     @abstractmethod
     def init(self, rewards: np.ndarray) -> None:
-       pass
+        pass
 
     @abstractmethod
     def scale(self, rewards: np.ndarray) -> np.ndarray:
@@ -32,29 +32,39 @@ class ExpRewardsScaler(RewardsScaler):
         self.max = np.quantile(np.abs(rewards).reshape(-1), 0.99)
 
     def scale(self, rewards: np.ndarray):
+        # Magic ??
         return 5 * np.exp(rewards / self.max) - 2.5
 
 
 class RewardsExpert(ABC):
-
-    def compute_rewards(self, observations: np.ndarray, next_observations: np.ndarray, dones_float: np.ndarray) -> np.ndarray:
+    def compute_rewards(
+        self,
+        observations: np.ndarray,
+        next_observations: np.ndarray,
+        dones_float: np.ndarray,
+    ) -> np.ndarray:
         assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
-            rewards.append(self.compute_rewards_one_episode(observations[i0:i1+1], next_observations[i0:i1+1]))
-            i0 = i1+1
+            rewards.append(
+                self.compute_rewards_one_episode(
+                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1]
+                )
+            )
+            i0 = i1 + 1
 
         return np.concatenate(rewards)
 
     @abstractmethod
-    def compute_rewards_one_episode(self, observations: np.ndarray, next_observations: np.ndarray) -> np.ndarray:
+    def compute_rewards_one_episode(
+        self, observations: np.ndarray, next_observations: np.ndarray
+    ) -> np.ndarray:
         pass
 
 
 class Preprocessor:
-    def __init__(self, partial_updates=True,
-                 update_preprocessor_every_episode=1):
+    def __init__(self, partial_updates=True, update_preprocessor_every_episode=1):
         self.preprocessor = preprocessing.StandardScaler()
         self.update_preprocessor_every_episode = update_preprocessor_every_episode
         self.partial_updates = partial_updates
@@ -77,15 +87,20 @@ class Preprocessor:
 
 
 class OTRewardsExpert(RewardsExpert):
-
-    def __init__(self, expert_data: ExpertData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01):
-        self.expert_states_pair = np.concatenate([expert_data.observations, expert_data.next_observations], axis=1)
+    def __init__(
+        self, expert_data: ExpertData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
+    ):
+        self.expert_states_pair = np.concatenate(
+            [expert_data.observations, expert_data.next_observations], axis=1
+        )
         self.cost_fn = cost_fn
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
 
-    def compute_rewards_one_episode(self, observations: np.ndarray, next_observations: np.ndarray) -> np.ndarray:
+    def compute_rewards_one_episode(
+        self, observations: np.ndarray, next_observations: np.ndarray
+    ) -> np.ndarray:
         states_pair = np.concatenate([observations, next_observations], axis=1)
 
         self.preproc.fit(states_pair)
@@ -107,13 +122,22 @@ class OTRewardsExpert(RewardsExpert):
         return np.asarray(rewards)
 
 
-def split_into_trajectories(observations, actions, rewards, masks, dones_float,
-                            next_observations):
+def split_into_trajectories(
+    observations, actions, rewards, masks, dones_float, next_observations
+):
     trajs = [[]]
 
     for i in tqdm(range(len(observations))):
-        trajs[-1].append((observations[i], actions[i], rewards[i], masks[i],
-                          dones_float[i], next_observations[i]))
+        trajs[-1].append(
+            (
+                observations[i],
+                actions[i],
+                rewards[i],
+                masks[i],
+                dones_float[i],
+                next_observations[i],
+            )
+        )
         if dones_float[i] == 1.0 and i + 1 < len(observations):
             trajs.append([])
 
@@ -121,12 +145,15 @@ def split_into_trajectories(observations, actions, rewards, masks, dones_float,
 
 
 class OTRewardsExpertFactory:
-
     def apply(self, dataset: D4RLDataset) -> OTRewardsExpert:
-        trajs = split_into_trajectories(dataset.observations, dataset.actions,
-                                        dataset.rewards, dataset.masks,
-                                        dataset.dones_float,
-                                        dataset.next_observations)
+        trajs = split_into_trajectories(
+            dataset.observations,
+            dataset.actions,
+            dataset.rewards,
+            dataset.masks,
+            dataset.dones_float,
+            dataset.next_observations,
+        )
 
         def compute_returns(traj):
             episode_return = 0
@@ -142,9 +169,7 @@ class OTRewardsExpertFactory:
         best_traj_next_states = np.stack([el[-1] for el in best_traj])
 
         return OTRewardsExpert(
-            ExpertData(observations=best_traj_states, next_observations=best_traj_next_states))
-
-
-
-
-
+            ExpertData(
+                observations=best_traj_states, next_observations=best_traj_next_states
+            )
+        )

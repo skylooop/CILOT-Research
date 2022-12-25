@@ -168,7 +168,7 @@ def entry(cfg: CILOT_cfg):
         optimizer = optim.Adam(cfg.encoder.parameters(), lr=3e-4)
 
     encoder = Encoder(D_agent.shape[1])
-    
+
     for step in trange(1):
         print("Computing T_init")
 
@@ -197,7 +197,9 @@ def entry(cfg: CILOT_cfg):
                     [merged_trajectories_agent, batch_trajectories_agent]
                 )
 
-        agent_traj_embeds = encoder(merged_trajectories_agent) # embedding of merged_traj
+        agent_traj_embeds = encoder(
+            merged_trajectories_agent
+        )  # embedding of merged_traj
         M = torch.nn.pairwise_distances(batch_trajectories_expert, agent_traj_embeds)
 
         # compute T init between first trajectory of agent and several traj of agent
