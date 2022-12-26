@@ -1,4 +1,5 @@
 assets/
+__pycache__/
 tmp_data/
 d4rl/
 
