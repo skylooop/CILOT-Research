@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Union
 import gym
 import numpy as np
 import tqdm
@@ -18,14 +18,13 @@ from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
 
 # Loggers builder
-from loggers.loggers_wrapper import InitTensorboard
+from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4" #opengl on dgx works only here 
 os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "2"
+os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
-
 
 # Arguments
 FLAGS = flags.FLAGS
@@ -36,13 +35,13 @@ flags.DEFINE_string("expert_env_name", "halfcheetah-expert-v2", "Environment nam
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum(
-    "logger", "Tensorboard", ["Wandb", "Tensorboard"], help="define loggers"
+    "logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers"
 )
 
 # Wandb params
 flags.DEFINE_string("wandb_project_name", "CILOT", help="Current run name")
 flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
-flags.DEFINE_string("job_type", "training", help="Set job type.")
+flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string("save_dir", "CILOT-Research/assets", "Logger logging dir.")
 
@@ -51,7 +50,7 @@ flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 10000, "Eval interval.")
-flags.DEFINE_integer("batch_size", 2, "Mini batch size.")
+flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
 flags.DEFINE_integer(
@@ -66,9 +65,9 @@ flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
 
-    env = EpisodeMonitor(env)
-    env = SinglePrecision(env)
-
+    env = EpisodeMonitor(env) #action wrapper
+    env = SinglePrecision(env) #observation wrapper
+    
     env.seed(seed)
 
     env.action_space.seed(seed)
@@ -112,7 +111,7 @@ def evaluate(
     agent: Learner,
     env: gym.Env,
     num_episodes: int,
-    summary_writer: SummaryWriter,
+    summary_writer: Union[SummaryWriter, None],
 ):
     stats = {"return": [], "length": []}
 
@@ -137,13 +136,18 @@ def evaluate(
         stats[k] = np.mean(v)
 
     video.save(f"eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
-
-    for k, v in stats.items():
-        summary_writer.add_scalar(f"evaluation/average_{k}s", v, step)
-    summary_writer.flush()
-
+    wandb.log({"video": wandb.Video(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4", fps=4, format='gif')})
+    
+    if summary_writer is not None:
+        for k, v in stats.items():
+            summary_writer.add_scalar(f"evaluation/average_{k}s", v, step)
+        summary_writer.flush()
+    else:
+        for k, v in stats.items():
+            wandb.log({f"Evaluation/average_{k}s": v.item()}, step=step)
 
 def main(_):
+    
     """
     if FLAGS.logger == "Tensorboard":
         summary_writer = SummaryWriter(
@@ -156,9 +160,16 @@ def main(_):
         summary_writer = InitTensorboard().init(
             save_dir=FLAGS.save_dir, seed=FLAGS.seed
         )
+        logger = "Tensorboard"
 
-    # if FLAGS.logger == "wandb":
-    # wandb_logger =
+    if FLAGS.logger == "Wandb":
+        wandb_logger = InitWandb().init(
+            config=FLAGS,
+            save_dir=FLAGS.save_dir, seed=FLAGS.seed, wandb_project_name=FLAGS.wandb_project_name,
+            wandb_entity=FLAGS.wandb_entity, wandb_job_type=FLAGS.wandb_job_type
+        )
+        logger = "Wandb"
+        summary_writer = None
 
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
@@ -204,16 +215,28 @@ def main(_):
         update_info = agent.update(batch)
 
         if i % FLAGS.log_interval == 0:
+            # k - name of loss (e.g Actor loss)
+            # V - loss value
+            
             for k, v in update_info.items():
                 if v.ndim == 0:
-                    summary_writer.add_scalar(f"training/{k}", v, i)
+                    if logger == "Tensorboard":
+                        summary_writer.add_scalar(f"training/{k}", v, i)
+                    else:
+                        wandb.log({f"Training {k}": v.item()}, step=i)
                 else:
-                    summary_writer.add_histogram(f"training/{k}", v, i)
-            summary_writer.flush()
-
+                    if logger == "Tensorboard":
+                        summary_writer.add_histogram(f"training/{k}", v, i)
+                        
+            if logger == "Tensorboard":
+                summary_writer.flush()
+                
         if i % FLAGS.eval_interval == 0:
             evaluate(i, agent, env, FLAGS.eval_episodes, summary_writer)
 
+    if logger == "Wandb":
+        wandb.finish()
+        
 
 if __name__ == "__main__":
     app.run(main)

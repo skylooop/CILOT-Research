@@ -126,7 +126,7 @@ def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations
 ):
     trajs = [[]]
-
+    print("Splitting into trajectories based on terminal states")
     for i in tqdm(range(len(observations))):
         trajs[-1].append(
             (
@@ -161,10 +161,12 @@ class OTRewardsExpertFactory:
                 episode_return += rew
 
             return episode_return
-
+        
+        # Choose best trajectories
         trajs.sort(key=compute_returns)
-
         best_traj = trajs[-1]
+        
+        # Concat observations
         best_traj_states = np.stack([el[0] for el in best_traj])
         best_traj_next_states = np.stack([el[-1] for el in best_traj])
 

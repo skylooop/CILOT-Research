@@ -95,7 +95,8 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
     def initialize_with_dataset(self, dataset: D4RLDataset, num_samples: int):
 
         assert self.capacity > num_samples
-
+        
+        print("Filling replay buffer")
         for i in range(num_samples - 1, len(dataset.observations)):
             if dataset.dones_float[i-1] == 1.0:
                 self.observations[0:i] = dataset.observations[0:i]
