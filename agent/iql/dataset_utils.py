@@ -13,6 +13,11 @@ import numpy as np
 from tqdm import tqdm
 import ot
 
+from absl import flags
+
+FLAGS = flags.FLAGS
+
+
 Batch = collections.namedtuple(
     "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
 )
@@ -100,11 +105,20 @@ class Dataset:
 
 class D4RLDataset(Dataset):
     def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
-        if os.path.isfile(f"CILOT-Research/tmp_data/dataset_{env.spec.id}.npz"):
-            dataset = dict(np.load(f"CILOT-Research/tmp_data/dataset_{env.spec.id}.npz"))
+        if os.path.isfile(
+            os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
+        ):
+            dataset = dict(
+                np.load(
+                    os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
+                )
+            )
         else:
             dataset = d4rl.qlearning_dataset(env)
-            np.savez(f"CILOT-Research/tmp_data/dataset_{env.spec.id}.npz", **dataset)
+            np.savez(
+                os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
+                **dataset,
+            )
             print("saved")
 
         if clip_to_eps:
@@ -116,12 +130,9 @@ class D4RLDataset(Dataset):
         for i in range(len(dones_float) - 1):
             if (
                 np.linalg.norm(
-                    dataset["observations"][i + 1] - dataset["next_observations"][i] # first term - before terminal state, second - next obs after reset
-                )
-                > 1e-6
-                or dataset["terminals"][i] == 1.0
-            ):
-                dones_float[i] = 1
+                    dataset["observations"][i + 1] - dataset["next_observations"][i]  # first term - before terminal state, second - next obs after reset
+                ) > 1e-6 or dataset["terminals"][i] == 1.0):
+                    dones_float[i] = 1
             else:
                 dones_float[i] = 0
 

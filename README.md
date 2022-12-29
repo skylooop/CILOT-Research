@@ -1,1 +1,10 @@
-# CILOT-Research
+# Crpss Domain IL
+
+## Script for running medium:
+```
+python train_iql_ot.py --env_name=hopper-medium-v2 --expert_env_name=hopper-expert-v2 \\
+                       --path_to_save_env=path_to_tmp-folder
+```
+
+## Wandb
+[Wandb project page](https://wandb.ai/cilot/projects)

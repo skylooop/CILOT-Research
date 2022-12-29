@@ -126,6 +126,7 @@ def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations
 ):
     trajs = [[]]
+    
     print("Splitting into trajectories based on terminal states")
     for i in tqdm(range(len(observations))):
         trajs[-1].append(

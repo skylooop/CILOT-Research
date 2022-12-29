@@ -21,7 +21,7 @@ from video import VideoRecorder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "4" #opengl on dgx works only here 
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on dgx works only here
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
@@ -34,18 +34,22 @@ flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "halfcheetah-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
-flags.DEFINE_enum(
-    "logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers"
-)
+flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
 
 # Wandb params
 flags.DEFINE_string("wandb_project_name", "CILOT", help="Current run name")
 flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
-flags.DEFINE_string("save_dir", "CILOT-Research/assets", "Logger logging dir.")
+flags.DEFINE_string(
+    "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
+)
 
-
+flags.DEFINE_string(
+    "path_to_save_env",
+    "/home/m_bobrin/CILOT-Research/tmp_data",
+    help="Path where .npz numpy file with environment will be saved.",
+)
 flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
@@ -65,9 +69,9 @@ flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
 
-    env = EpisodeMonitor(env) #action wrapper
-    env = SinglePrecision(env) #observation wrapper
-    
+    env = EpisodeMonitor(env)  # action wrapper
+    env = SinglePrecision(env)  # observation wrapper
+
     env.seed(seed)
 
     env.action_space.seed(seed)
@@ -135,19 +139,31 @@ def evaluate(
     for k, v in stats.items():
         stats[k] = np.mean(v)
 
-    video.save(f"eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
-    wandb.log({"video": wandb.Video(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4", fps=4, format='gif')})
-    
+    print("Saving video")
+    print(FLAGS.save_dir)
+    video.save(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
+    wandb.log(
+        {
+            "video": wandb.Video(
+                f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4",
+                fps=4,
+                format="gif",
+            )
+        }
+    )
+    wandb.log(stats)
+
     if summary_writer is not None:
         for k, v in stats.items():
             summary_writer.add_scalar(f"evaluation/average_{k}s", v, step)
         summary_writer.flush()
     else:
         for k, v in stats.items():
-            wandb.log({f"Evaluation/average_{k}s": v.item()}, step=step)
+            wandb.log({f"Evaluation/average_{k}s": v}, step=step)
+
 
 def main(_):
-    
+
     """
     if FLAGS.logger == "Tensorboard":
         summary_writer = SummaryWriter(
@@ -165,8 +181,11 @@ def main(_):
     if FLAGS.logger == "Wandb":
         wandb_logger = InitWandb().init(
             config=FLAGS,
-            save_dir=FLAGS.save_dir, seed=FLAGS.seed, wandb_project_name=FLAGS.wandb_project_name,
-            wandb_entity=FLAGS.wandb_entity, wandb_job_type=FLAGS.wandb_job_type
+            save_dir=FLAGS.save_dir,
+            seed=FLAGS.seed,
+            wandb_project_name=FLAGS.wandb_project_name,
+            wandb_entity=FLAGS.wandb_entity,
+            wandb_job_type=FLAGS.wandb_job_type,
         )
         logger = "Wandb"
         summary_writer = None
@@ -217,7 +236,7 @@ def main(_):
         if i % FLAGS.log_interval == 0:
             # k - name of loss (e.g Actor loss)
             # V - loss value
-            
+
             for k, v in update_info.items():
                 if v.ndim == 0:
                     if logger == "Tensorboard":
@@ -227,16 +246,16 @@ def main(_):
                 else:
                     if logger == "Tensorboard":
                         summary_writer.add_histogram(f"training/{k}", v, i)
-                        
+
             if logger == "Tensorboard":
                 summary_writer.flush()
-                
+
         if i % FLAGS.eval_interval == 0:
             evaluate(i, agent, env, FLAGS.eval_episodes, summary_writer)
 
     if logger == "Wandb":
         wandb.finish()
-        
+
 
 if __name__ == "__main__":
     app.run(main)
