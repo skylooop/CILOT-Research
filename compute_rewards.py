@@ -11,6 +11,13 @@ from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
 from sklearn import preprocessing
 from tqdm import tqdm
 
+import torch.nn as nn
+
+from test_encoder import Encoder
+from absl import flags
+
+FLAGS = flags.FLAGS
+
 from agent.iql.dataset_utils import D4RLDataset
 
 ExpertData = collections.namedtuple("ExpertData", ["observations", "next_observations"])
@@ -46,10 +53,12 @@ class RewardsExpert(ABC):
         assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
+        model = Encoder(observations.shape[1] + next_observations.shape[1])
+        
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
             rewards.append(
                 self.compute_rewards_one_episode(
-                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1]
+                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1], model
                 )
             )
             i0 = i1 + 1
@@ -58,7 +67,7 @@ class RewardsExpert(ABC):
 
     @abstractmethod
     def compute_rewards_one_episode(
-        self, observations: np.ndarray, next_observations: np.ndarray
+        self, observations: np.ndarray, next_observations: np.ndarray, model: nn.Module
     ) -> np.ndarray:
         pass
 
@@ -97,12 +106,18 @@ class OTRewardsExpert(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-
+        
     def compute_rewards_one_episode(
-        self, observations: np.ndarray, next_observations: np.ndarray
+        self, observations: np.ndarray, next_observations: np.ndarray, model: nn.Module
     ) -> np.ndarray:
+        
+        # Concat agent (s_1, s_2)
         states_pair = np.concatenate([observations, next_observations], axis=1)
-
+        
+        # MLP for states_pair
+        if FLAGS.use_embedding_agent_pairs:
+            states_pair = model(states_pair)
+            
         self.preproc.fit(states_pair)
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))

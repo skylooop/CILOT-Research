@@ -45,6 +45,8 @@ flags.DEFINE_string(
     "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
 )
 
+flags.DEFINE_boolean("use_embedding_agent_pairs", default=False, help="Whether to use embedding for agent states.")
+
 flags.DEFINE_string(
     "path_to_save_env",
     "/home/m_bobrin/CILOT-Research/tmp_data",
@@ -163,15 +165,6 @@ def evaluate(
 
 
 def main(_):
-
-    """
-    if FLAGS.logger == "Tensorboard":
-        summary_writer = SummaryWriter(
-            os.path.join(FLAGS.save_dir, "tb", str(FLAGS.seed)), write_to_disk=True
-        )
-    """
-    # os.makedirs(FLAGS.save_dir, exist_ok=True)
-
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
             save_dir=FLAGS.save_dir, seed=FLAGS.seed
