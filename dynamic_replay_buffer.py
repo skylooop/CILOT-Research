@@ -120,7 +120,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         print("rewards:", np.min(self.rewards[:self.size]), np.mean(self.rewards[:self.size]), np.max(self.rewards[:self.size]))
 
     def insert(self, observation: np.ndarray, action: np.ndarray,
-               reward: float, mask: float, done_float: float,
+               mask: float, done_float: float,
                next_observation: np.ndarray):
 
         self.observations_cur.append(observation)

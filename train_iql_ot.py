@@ -55,7 +55,7 @@ flags.DEFINE_string(
 flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
-flags.DEFINE_integer("eval_interval", 10000, "Eval interval.")
+flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
@@ -84,11 +84,14 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     return env, dataset
 
 
-def make_expert() -> OTRewardsExpert:
+def make_expert(dataset: D4RLDataset) -> OTRewardsExpert:
+    '''
+    dataset - agent dataset
+    '''
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
-    return OTRewardsExpertFactory().apply(expert_dataset)
+    return OTRewardsExpertFactory().apply(expert_dataset, agent_obs=dataset.observations.shape[1])
 
 
 def update_buffer(
@@ -96,7 +99,7 @@ def update_buffer(
     action: np.ndarray,
     replay_buffer: ReplayBufferWithDynamicRewards,
     env: gym.Env,
-    summary_writer: SummaryWriter,
+    summary_writer: Union[SummaryWriter, None]
 ):
 
     next_observation, reward, done, info = env.step(action)
@@ -106,9 +109,14 @@ def update_buffer(
 
     if done:
         next_observation = env.reset()
-        for k, v in info["episode"].items():
-            summary_writer.add_scalar(f"training/{k}", v, info["total"]["timesteps"])
+        if summary_writer is not None:
+            for k, v in info["episode"].items():
+                summary_writer.add_scalar(f"training/{k}", v, info["total"]["timesteps"])
 
+        # Wandb
+        else:
+            for k, v in info["episode"].items():
+                wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])
     return next_observation
 
 
@@ -143,17 +151,19 @@ def evaluate(
 
     print("Saving video")
     print(FLAGS.save_dir)
+    
     video.save(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
-    wandb.log(
-        {
-            "video": wandb.Video(
-                f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4",
-                fps=4,
-                format="gif",
-            )
-        }
-    )
-    wandb.log(stats)
+    if FLAGS.logger == "Wandb":
+        wandb.log(
+            {
+                "video": wandb.Video(
+                    f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4",
+                    fps=4,
+                    format="gif",
+                )
+            }
+        )
+        wandb.log(stats)
 
     if summary_writer is not None:
         for k, v in stats.items():
@@ -186,7 +196,7 @@ def main(_):
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
     # Making expert
-    expert = make_expert()
+    expert = make_expert(dataset=dataset)
 
     action_dim = env.action_space.shape[0]
     replay_buffer = ReplayBufferWithDynamicRewards(

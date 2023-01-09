@@ -21,7 +21,7 @@ FLAGS = flags.FLAGS
 from agent.iql.dataset_utils import D4RLDataset
 
 ExpertData = collections.namedtuple("ExpertData", ["observations", "next_observations"])
-
+AgentData = collections.namedtuple("AgentData", ["observations_shape"])
 
 class RewardsScaler(ABC):
     @abstractmethod
@@ -39,7 +39,7 @@ class ExpRewardsScaler(RewardsScaler):
         self.max = np.quantile(np.abs(rewards).reshape(-1), 0.99)
 
     def scale(self, rewards: np.ndarray):
-        # Magic ??
+        # From paper
         return 5 * np.exp(rewards / self.max) - 2.5
 
 
@@ -53,12 +53,12 @@ class RewardsExpert(ABC):
         assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
-        model = Encoder(observations.shape[1] + next_observations.shape[1])
-        
+        #model = Encoder(observations.shape[1] + next_observations.shape[1])
+
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
             rewards.append(
                 self.compute_rewards_one_episode(
-                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1], model
+                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1]
                 )
             )
             i0 = i1 + 1
@@ -67,7 +67,7 @@ class RewardsExpert(ABC):
 
     @abstractmethod
     def compute_rewards_one_episode(
-        self, observations: np.ndarray, next_observations: np.ndarray, model: nn.Module
+        self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
         pass
 
@@ -97,7 +97,7 @@ class Preprocessor:
 
 class OTRewardsExpert(RewardsExpert):
     def __init__(
-        self, expert_data: ExpertData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
+        self, expert_data: ExpertData, agent_data: AgentData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
     ):
         self.expert_states_pair = np.concatenate(
             [expert_data.observations, expert_data.next_observations], axis=1
@@ -106,18 +106,21 @@ class OTRewardsExpert(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
+
+        # Init model
+        self.model = Encoder(2 * agent_data.observations_shape)
         
     def compute_rewards_one_episode(
-        self, observations: np.ndarray, next_observations: np.ndarray, model: nn.Module
+        self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        
+
         # Concat agent (s_1, s_2)
         states_pair = np.concatenate([observations, next_observations], axis=1)
-        
+
         # MLP for states_pair
         if FLAGS.use_embedding_agent_pairs:
-            states_pair = model(states_pair)
-            
+            states_pair = self.model(states_pair)
+
         self.preproc.fit(states_pair)
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
@@ -141,7 +144,7 @@ def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations
 ):
     trajs = [[]]
-    
+
     print("Splitting into trajectories based on terminal states")
     for i in tqdm(range(len(observations))):
         trajs[-1].append(
@@ -161,7 +164,7 @@ def split_into_trajectories(
 
 
 class OTRewardsExpertFactory:
-    def apply(self, dataset: D4RLDataset) -> OTRewardsExpert:
+    def apply(self, dataset: D4RLDataset, agent_obs: int) -> OTRewardsExpert:
         trajs = split_into_trajectories(
             dataset.observations,
             dataset.actions,
@@ -177,11 +180,11 @@ class OTRewardsExpertFactory:
                 episode_return += rew
 
             return episode_return
-        
+
         # Choose best trajectories
         trajs.sort(key=compute_returns)
         best_traj = trajs[-1]
-        
+
         # Concat observations
         best_traj_states = np.stack([el[0] for el in best_traj])
         best_traj_next_states = np.stack([el[-1] for el in best_traj])
@@ -189,5 +192,6 @@ class OTRewardsExpertFactory:
         return OTRewardsExpert(
             ExpertData(
                 observations=best_traj_states, next_observations=best_traj_next_states
-            )
+            ),
+            AgentData(observations_shape=agent_obs)
         )
