@@ -10,6 +10,9 @@ from ott.solvers.linear import sinkhorn
 from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
 from sklearn import preprocessing
 from tqdm import tqdm
+import torch
+
+import typing as tp
 
 import torch.nn as nn
 
@@ -53,8 +56,8 @@ class RewardsExpert(ABC):
         assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
-        #model = Encoder(observations.shape[1] + next_observations.shape[1])
 
+        # Each 1k step - terminate
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
             rewards.append(
                 self.compute_rewards_one_episode(
@@ -118,27 +121,84 @@ class OTRewardsExpert(RewardsExpert):
         states_pair = np.concatenate([observations, next_observations], axis=1)
 
         # MLP for states_pair
-        if FLAGS.use_embedding_agent_pairs:
-            states_pair = self.model(states_pair)
+        #if FLAGS.cross_domain:
+            #states_pair = self.model(states_pair)
 
         self.preproc.fit(states_pair)
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
-        # x = jnp.asarray(states_pair)
-        # y = jnp.asarray(self.expert_states_pair)
+        
         a = jnp.ones((x.shape[0],)) / x.shape[0]
         b = jnp.ones((y.shape[0],)) / y.shape[0]
 
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b)
+        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.9, tau_b=0.9)
         solver = sinkhorn.Sinkhorn()
+        
         ot_sink = solver(ot_prob)
-
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
         rewards = -transp_cost
 
         return np.asarray(rewards)
 
+
+class OTRewardsExpertCrossDomain(RewardsExpert):
+    def __init__(
+        self, expert_data: ExpertData, agent_data: AgentData, 
+        embed_model: nn.Module,
+        opt_fn: tp.Callable[[torch.Tensor], None],
+        cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
+    ):
+        self.expert_states_pair = np.concatenate(
+            [expert_data.observations, expert_data.next_observations], axis=1
+        )
+        self.cost_fn = cost_fn
+        self.opt_fn = opt_fn
+        self.epsilon = epsilon
+
+        self.preproc = Preprocessor()
+
+        # Init model
+        self.model = embed_model
+        
+    def torch_cost_matrix(self, states_pair_torch: torch.Tensor):
+        expert_states_pair = torch.from_numpy(self.expert_states_pair).type(torch.float32).cuda()
+        dist = (states_pair_torch[:, None] - expert_states_pair[None,]).pow(2).sum(-1).sqrt()
+        return dist
+        
+        
+    def compute_rewards_one_episode(
+        self, observations: np.ndarray, next_observations: np.ndarray
+    ) -> np.ndarray:
+
+        # Concat agent (s_1, s_2)
+        embed_obs = self.model(torch.from_numpy(observations).type(torch.float32).cuda()) 
+        next_embed_obs = self.model(torch.from_numpy(next_observations).type(torch.float32).cuda())
+        states_pair_torch = torch.cat([embed_obs, next_embed_obs], 1)
+        states_pair = states_pair_torch.detach().cpu().numpy()
+        
+
+        self.preproc.fit(states_pair)
+        x = jnp.asarray(self.preproc.transform(states_pair))
+        y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
+        
+        a = jnp.ones((x.shape[0],)) / x.shape[0]
+        b = jnp.ones((y.shape[0],)) / y.shape[0]
+
+        geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
+        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.9, tau_b=0.9)
+        solver = sinkhorn.Sinkhorn()
+        
+        ot_sink = solver(ot_prob)
+        transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
+        rewards = -transp_cost
+        
+        torch_t_matrix = torch.from_numpy(np.asarray(ot_sink.matrix)).type(torch.float32).cuda()
+        torch_cost = self.torch_cost_matrix(states_pair_torch)
+        loss = (torch_t_matrix * torch_cost).sum()
+        self.opt_fn(loss)
+
+        return np.asarray(rewards)
 
 def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations

@@ -46,7 +46,7 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_boolean("use_embedding_agent_pairs", default=False, help="Whether to use embedding for agent states.")
-
+flags.DEFINE_boolean("cross_domain", default=False, help="Whether agent and expert are from same domain.")
 flags.DEFINE_string(
     "path_to_save_env",
     "/home/m_bobrin/CILOT-Research/tmp_data",
@@ -86,7 +86,7 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
 
 def make_expert(dataset: D4RLDataset) -> OTRewardsExpert:
     '''
-    dataset - agent dataset
+    dataset - expert dataset
     '''
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)

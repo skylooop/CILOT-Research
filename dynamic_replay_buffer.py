@@ -96,7 +96,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
         assert self.capacity > num_samples
         
-        print("Filling replay buffer and computing rewards")
+        print("Filling replay buffer and computing OT rewards")
         for i in range(num_samples - 1, len(dataset.observations)):
             if dataset.dones_float[i-1] == 1.0:
                 self.observations[0:i] = dataset.observations[0:i]

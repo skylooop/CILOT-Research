@@ -27,6 +27,7 @@ class InitWandb(InitLogging):
         import wandb
         
         wandb.login()
-        run = wandb.init(config=config, project=wandb_project_name, entity=wandb_entity, job_type=wandb_job_type, tags=["One Domain IL"])
+        run = wandb.init(config=config, project=wandb_project_name, entity=wandb_entity,
+                         job_type=wandb_job_type, tags=["One Domain IL"])
         
         return run
