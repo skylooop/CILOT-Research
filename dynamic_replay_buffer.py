@@ -104,7 +104,10 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                 self.masks[0:i] = dataset.masks[0:i]
                 self.dones_float[0:i] = dataset.dones_float[0:i]
                 self.next_observations[0:i] = dataset.next_observations[0:i]
-
+                #cross-domain / one domain
+                #make callbacks?
+                self.expert.warmup()
+                
                 self.rewards[0:i] = self.expert.compute_rewards(
                     self.observations[0:i],
                     self.next_observations[0:i],
