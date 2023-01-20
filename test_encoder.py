@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class Encoder(nn.Module):
-    def __init__(self, state_shape) -> None:
+    def __init__(self, state_shape, out_shape) -> None:
         super().__init__()
 
         self.linear_net = nn.Sequential(
@@ -16,10 +16,9 @@ class Encoder(nn.Module):
             nn.Linear(128, 64),
             nn.LeakyReLU(0.1),
             nn.BatchNorm1d(64),
-            nn.Linear(64, state_shape),
+            nn.Linear(64, out_shape),
         )
 
     def forward(self, x):
         x = self.linear_net(x)
-        #x = x.view(x.shape[0], -1)
         return x

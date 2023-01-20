@@ -31,16 +31,17 @@ class ListBuffer:
     def __init__(self, n: int) -> None:
         self.data = []
         self.n = n
-    
+
     def append(self, triple: tp.Tuple[np.ndarray, np.ndarray, np.ndarray]):
         self.data.append(triple)
-        
+
         if len(self.data) > self.n:
             self.data = self.data[1:]
-            
+
     def sample(self):
         return self.data[np.random.randint(0, len(self.data))]
-        
+
+
 class RewardsScaler(ABC):
     @abstractmethod
     def init(self, rewards: np.ndarray) -> None:
@@ -68,7 +69,7 @@ class RewardsExpert(ABC):
         next_observations: np.ndarray,
         dones_float: np.ndarray,
     ) -> np.ndarray:
-        
+
         assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
@@ -83,11 +84,11 @@ class RewardsExpert(ABC):
             i0 = i1 + 1
 
         return np.concatenate(rewards)
-    
+
     @abstractmethod
     def warmup() -> None:
         pass
-    
+
     @abstractmethod
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
@@ -120,48 +121,52 @@ class Preprocessor:
 
 class OTRewardsExpert(RewardsExpert):
     def __init__(
-        self, expert_data: ExpertData, agent_data: AgentData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
+        self, expert_data: ExpertData, cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
     ):
         self.expert_states_pair = np.concatenate(
             [expert_data.observations, expert_data.next_observations], axis=1
         )
         self.cost_fn = cost_fn
         self.epsilon = epsilon
+        self.expert_data = expert_data
 
         self.preproc = Preprocessor()
-          
+
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        
+
         states_pair = np.concatenate([observations, next_observations], axis=1)
-        
+
         self.preproc.fit(states_pair)
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
-        
+
         a = jnp.ones((x.shape[0],)) / x.shape[0]
         b = jnp.ones((y.shape[0],)) / y.shape[0]
 
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.9, tau_b=0.9)
+        ot_prob = linear_problem.LinearProblem(geom, a, b)
         solver = sinkhorn.Sinkhorn()
-        
+
         ot_sink = solver(ot_prob)
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
         rewards = -transp_cost
 
         return np.asarray(rewards)
-    
+
     def warmup() -> None:
         pass
-    
+
+
 class OTRewardsExpertCrossDomain(RewardsExpert):
     def __init__(
-        self, expert_data: ExpertData, 
+        self,
+        expert_data: ExpertData,
         embed_model: nn.Module,
         opt_fn: tp.Callable[[torch.Tensor], None],
-        cost_fn: CostFn = costs.Euclidean(), epsilon=0.01
+        cost_fn: CostFn = costs.Euclidean(),
+        epsilon=0.01,
     ):
         self.expert_states_pair = np.concatenate(
             [expert_data.observations, expert_data.next_observations], axis=1
@@ -172,55 +177,91 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
 
         self.preproc = Preprocessor()
         self.states_pair_buffer = ListBuffer(n=100)
-        
+
         # Init model
         self.model = embed_model
-    
+
     def torch_cost_matrix(self, states_pair_torch: torch.Tensor):
-        expert_states_pair = torch.from_numpy(self.expert_states_pair).type(torch.float32).cuda()
-        dist = (states_pair_torch[:, None] - expert_states_pair[None,]).pow(2).sum(-1).sqrt()
+        expert_states_pair = torch.from_numpy(self.expert_states_pair).to(
+            torch.device("cuda:1")
+        )
+        dist = (
+            (states_pair_torch[:, None]- expert_states_pair[None, ])
+            .pow(2)
+            .sum(-1)
+            .sqrt()
+        )
         return dist
-    
+
     def optim_embed(self) -> None:
-        
-        observations, next_observations, transport_matrix = self.states_pair_buffer.sample()
-        
-        embed_obs = self.model(torch.from_numpy(observations).type(torch.float32).cuda()) 
-        next_embed_obs = self.model(torch.from_numpy(next_observations).type(torch.float32).cuda())
+
+        (
+            observations,
+            next_observations,
+            transport_matrix,
+        ) = self.states_pair_buffer.sample()
+
+        embed_obs = self.model(
+            torch.from_numpy(observations).to(torch.device("cuda:1"))
+        )
+        next_embed_obs = self.model(
+            torch.from_numpy(next_observations).to(torch.device("cuda:1"))
+        )
         states_pair_torch = torch.cat([embed_obs, next_embed_obs], 1)
-        
-        torch_t_matrix = torch.from_numpy(transport_matrix).type(torch.float32).cuda()
+
+        torch_t_matrix = torch.from_numpy(transport_matrix).to(torch.device("cuda:1"))
         torch_cost = self.torch_cost_matrix(states_pair_torch)
         loss = (torch_t_matrix * torch_cost).sum()
-        self.opt_fn(loss)
-    
+        self.opt_fn(loss=loss, model=self.model)
+
     def warmup(self) -> None:
         self.optim_embed()
-        
+
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        
-        states_pair = np.concatenate([observations, next_observations], axis=1)
+
+        with torch.no_grad():
+            embeded_observations = (
+                self.model(torch.from_numpy(observations).to(torch.device("cuda:1")))
+                .cpu()
+                .numpy()
+            )
+            embeded_next_observations = (
+                self.model(
+                    torch.from_numpy(next_observations).to(torch.device("cuda:1"))
+                )
+                .cpu()
+                .numpy()
+            )
+
+        states_pair = np.concatenate(
+            [embeded_observations, embeded_next_observations], axis=1
+        )
 
         self.preproc.fit(states_pair)
+
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
-        
-        a = jnp.ones((x.shape[0], )) / x.shape[0]
-        b = jnp.ones((y.shape[0], )) / y.shape[0]
+
+        a = jnp.ones((x.shape[0],)) / x.shape[0]
+        b = jnp.ones((y.shape[0],)) / y.shape[0]
 
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.9, tau_b=0.9)
+        ot_prob = linear_problem.LinearProblem(geom, a, b)
         solver = sinkhorn.Sinkhorn()
-        
+
         ot_sink = solver(ot_prob)
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
         rewards = -transp_cost
-        
-        self.states_pair_buffer.append((observations, next_observations, np.asarray(ot_sink.matrix)))
-        
+
+        # ((999, obs_shape), (999, obs_shape), (999, 999))
+        self.states_pair_buffer.append(
+            (observations, next_observations, np.asarray(ot_sink.matrix))
+        )
+
         return np.asarray(rewards)
+
 
 def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations
@@ -246,7 +287,7 @@ def split_into_trajectories(
 
 
 class OTRewardsExpertFactory:
-    def apply(self, dataset: D4RLDataset, agent_obs: int) -> OTRewardsExpert:
+    def apply(self, dataset: D4RLDataset) -> OTRewardsExpert:
         trajs = split_into_trajectories(
             dataset.observations,
             dataset.actions,
@@ -274,6 +315,19 @@ class OTRewardsExpertFactory:
         return OTRewardsExpert(
             ExpertData(
                 observations=best_traj_states, next_observations=best_traj_next_states
-            ),
-            AgentData(observations_shape=agent_obs)
+            )
+        )
+
+
+class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
+    def apply(
+        self,
+        dataset: D4RLDataset,
+        embed_model: torch.nn.Module,
+        opt_fn: tp.Callable[[torch.Tensor], None],
+    ) -> OTRewardsExpert:
+
+        expert = super().apply(dataset)
+        return OTRewardsExpertCrossDomain(
+            expert_data=expert.expert_data, embed_model=embed_model, opt_fn=opt_fn
         )

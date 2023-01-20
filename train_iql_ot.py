@@ -10,12 +10,20 @@ import wandb
 from tensorboardX import SummaryWriter
 
 from agent.iql.dataset_utils import D4RLDataset
-from compute_rewards import OTRewardsExpertFactory, OTRewardsExpert, ExpRewardsScaler
+from compute_rewards import (
+    OTRewardsExpertFactory,
+    OTRewardsExpert,
+    ExpRewardsScaler,
+    OTRewardsExpertFactoryCrossDomain,
+)
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
+import torch
+
+from test_encoder import Encoder
 
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
@@ -30,8 +38,8 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment name.")
-flags.DEFINE_string("expert_env_name", "halfcheetah-expert-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
+flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
@@ -45,8 +53,14 @@ flags.DEFINE_string(
     "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
 )
 
-flags.DEFINE_boolean("use_embedding_agent_pairs", default=False, help="Whether to use embedding for agent states.")
-flags.DEFINE_boolean("cross_domain", default=False, help="Whether agent and expert are from same domain.")
+flags.DEFINE_boolean(
+    "use_embedding_agent_pairs",
+    default=False,
+    help="Whether to use embedding for agent states.",
+)
+flags.DEFINE_boolean(
+    "cross_domain", default=False, help="Whether agent and expert are from same domain."
+)
 flags.DEFINE_string(
     "path_to_save_env",
     "/home/m_bobrin/CILOT-Research/tmp_data",
@@ -68,6 +82,13 @@ flags.DEFINE_integer(
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
 
+def opt_fn(loss: float, model: nn.Module):
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
 
@@ -84,14 +105,17 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     return env, dataset
 
 
-def make_expert(dataset: D4RLDataset) -> OTRewardsExpert:
-    '''
+def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert:
+    """
     dataset - expert dataset
-    '''
+    """
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
-    return OTRewardsExpertFactory().apply(expert_dataset, agent_obs=dataset.observations.shape[1])
+
+    return OTRewardsExpertFactoryCrossDomain().apply(
+        expert_dataset, embed_model=Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1")), opt_fn=opt_fn
+    )
 
 
 def update_buffer(
@@ -99,7 +123,7 @@ def update_buffer(
     action: np.ndarray,
     replay_buffer: ReplayBufferWithDynamicRewards,
     env: gym.Env,
-    summary_writer: Union[SummaryWriter, None]
+    summary_writer: Union[SummaryWriter, None],
 ):
 
     next_observation, reward, done, info = env.step(action)
@@ -111,7 +135,9 @@ def update_buffer(
         next_observation = env.reset()
         if summary_writer is not None:
             for k, v in info["episode"].items():
-                summary_writer.add_scalar(f"training/{k}", v, info["total"]["timesteps"])
+                summary_writer.add_scalar(
+                    f"training/{k}", v, info["total"]["timesteps"]
+                )
 
         # Wandb
         else:
@@ -151,7 +177,7 @@ def evaluate(
 
     print("Saving video")
     print(FLAGS.save_dir)
-    
+
     video.save(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
@@ -196,7 +222,9 @@ def main(_):
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
     # Making expert
-    expert = make_expert(dataset=dataset)
+    expert = make_expert(
+        dataset=dataset, agent_state_shape=env.observation_space.shape[0]
+    )
 
     action_dim = env.action_space.shape[0]
     replay_buffer = ReplayBufferWithDynamicRewards(
@@ -235,6 +263,8 @@ def main(_):
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
+
+        expert.warmup()
 
         if i % FLAGS.log_interval == 0:
             # k - name of loss (e.g Actor loss)

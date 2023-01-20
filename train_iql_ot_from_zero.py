@@ -55,6 +55,7 @@ def make_expert() -> OTRewardsExpert:
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
+    
     return OTRewardsExpertFactory().apply(expert_dataset)
 
 
