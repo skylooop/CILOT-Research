@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 import flax.linen as nn
 from absl import app, flags
+import jax
 
 import wandb
 from tensorboardX import SummaryWriter
@@ -33,12 +34,14 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on dgx works only here
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".8"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # Arguments
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -77,7 +80,7 @@ flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 100000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 10000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
@@ -235,7 +238,7 @@ def main(_):
         expert,
     )
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
-
+    
     agent = Learner(
         FLAGS.seed,
         env.observation_space.sample()[np.newaxis],
@@ -253,6 +256,9 @@ def main(_):
         disable=not FLAGS.tqdm,
     ):
         if i >= FLAGS.num_pretraining_steps:
+            agent.expectile = 0.7
+            expert.preproc.enabled = False
+            
             action = agent.sample_actions(
                 observation,
             )

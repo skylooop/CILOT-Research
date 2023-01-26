@@ -75,7 +75,7 @@ class RewardsExpert(ABC):
         rewards = []
 
         # Each 1k step - terminate
-        for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
+        for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):  #
             rewards.append(
                 self.compute_rewards_one_episode(
                     observations[i0 : i1 + 1], next_observations[i0 : i1 + 1]
@@ -186,7 +186,12 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             torch.device("cuda:1")
         )
         dist = (
-            (states_pair_torch[:, None]- expert_states_pair[None, ])
+            (
+                states_pair_torch[:, None]
+                - expert_states_pair[
+                    None,
+                ]
+            )
             .pow(2)
             .sum(-1)
             .sqrt()
