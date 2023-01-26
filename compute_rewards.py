@@ -225,7 +225,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-
+        
         with torch.no_grad():
             embeded_observations = (
                 self.model(torch.from_numpy(observations).to(torch.device("cuda:1")))

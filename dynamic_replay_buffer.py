@@ -141,7 +141,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                 self.insert_index = i
                 self.size = i
                 break
-
+    
         self.scaler.init(self.rewards[: self.size])
         self.rewards[: self.size] = self.scaler.scale(self.rewards[: self.size])
         print(

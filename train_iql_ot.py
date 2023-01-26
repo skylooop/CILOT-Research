@@ -43,7 +43,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -55,7 +55,7 @@ flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
-    "save_dir", "/home/nazar/CILOT-Research/assets", "Logger logging dir."
+    "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
 )
 
 flags.DEFINE_boolean(
@@ -77,12 +77,12 @@ flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.") #1e5
 flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 1000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 50000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
@@ -241,7 +241,6 @@ def main(_):
         expert,
     )
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
-    jax.profiler.save_device_memory_profile("memory.prof")
     
     agent = Learner(
         FLAGS.seed,
@@ -249,7 +248,7 @@ def main(_):
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
         temperature=3.0,
-        expectile=0.7,
+        expectile=0.8,
     )
 
     observation = env.reset()
@@ -260,6 +259,8 @@ def main(_):
         disable=not FLAGS.tqdm,
     ):
         if i >= FLAGS.num_pretraining_steps:
+            expert.model.eval()
+            
             agent.expectile = 0.7
             expert.preproc.enabled = False
             
@@ -273,7 +274,6 @@ def main(_):
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
-
         expert.warmup()
 
         if i % FLAGS.log_interval == 0:
