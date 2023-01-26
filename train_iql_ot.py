@@ -10,6 +10,7 @@ import jax.profiler
 
 import wandb
 from tensorboardX import SummaryWriter
+from torch import Tensor
 
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
@@ -42,7 +43,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -54,7 +55,7 @@ flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
-    "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
+    "save_dir", "/home/nazar/CILOT-Research/assets", "Logger logging dir."
 )
 
 flags.DEFINE_boolean(
@@ -81,16 +82,9 @@ flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 10000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 1000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-
-
-def opt_fn(loss: float, model: nn.Module):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
 
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
@@ -117,8 +111,16 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
 
+    encoder = Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1"))
+    optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-4)
+
+    def opt_fn(loss: Tensor, model: nn.Module):
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
     return OTRewardsExpertFactoryCrossDomain().apply(
-        expert_dataset, embed_model=Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1")), opt_fn=opt_fn
+        expert_dataset, embed_model=encoder, opt_fn=opt_fn
     )
 
 
