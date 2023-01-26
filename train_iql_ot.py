@@ -6,6 +6,7 @@ import tqdm
 import flax.linen as nn
 from absl import app, flags
 import jax
+import jax.profiler
 
 import wandb
 from tensorboardX import SummaryWriter
@@ -221,7 +222,7 @@ def main(_):
         )
         logger = "Wandb"
         summary_writer = None
-
+    
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
     # Making expert
@@ -238,6 +239,7 @@ def main(_):
         expert,
     )
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
+    jax.profiler.save_device_memory_profile("memory.prof")
     
     agent = Learner(
         FLAGS.seed,
