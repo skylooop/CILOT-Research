@@ -86,7 +86,7 @@ class RewardsExpert(ABC):
         return np.concatenate(rewards)
 
     @abstractmethod
-    def warmup() -> None:
+    def warmup(self) -> None:
         pass
 
     @abstractmethod
@@ -155,7 +155,7 @@ class OTRewardsExpert(RewardsExpert):
 
         return np.asarray(rewards)
 
-    def warmup() -> None:
+    def warmup(self) -> None:
         pass
 
 
@@ -176,7 +176,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-        self.states_pair_buffer = ListBuffer(n=100)
+        self.states_pair_buffer = ListBuffer(n=10)
 
         # Init model
         self.model = embed_model
