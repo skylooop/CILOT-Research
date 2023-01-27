@@ -43,7 +43,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -82,7 +82,7 @@ flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 50000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 20000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
