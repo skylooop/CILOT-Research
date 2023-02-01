@@ -3,14 +3,17 @@ from typing import Tuple, Dict, Union
 import gym
 import numpy as np
 import tqdm
+
+
 import flax.linen as nn
+import optax
 from absl import app, flags
 import jax
-import jax.profiler
+from torch import Tensor
+from flax.training import train_state
 
 import wandb
 from tensorboardX import SummaryWriter
-from torch import Tensor
 
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
@@ -24,20 +27,20 @@ from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
-import torch
 
-from test_encoder import Encoder
-
+#from test_encoder import Encoder
+from encoder_jax import Encoder_JAX
+from agent.iql.common import Model
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on dgx works only here
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".8"
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+#os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # Arguments
 FLAGS = flags.FLAGS
@@ -82,10 +85,23 @@ flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 20000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 40000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
+
+def prepare_encoder(agent_state_shape, expert_state_shape):
+    rng = jax.random.PRNGKey(FLAGS.seed)
+    rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
+    encoder = Encoder_JAX(agent_state_shape, expert_state_shape, train=True)
+    dummy = jax.random.normal(dummy_inp_rng, (1, agent_state_shape))
+    params = encoder.init(model_rng, dummy)
+    
+    encoder.apply(params, dummy, mutable=['batch_stats'])
+    
+    return encoder, params, model_rng
+    
+    
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
@@ -111,16 +127,28 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
 
-    encoder = Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1"))
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-4)
-
-    def opt_fn(loss: Tensor, model: nn.Module):
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    #encoder = Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1"))
+    encoder, params, model_rng = prepare_encoder(agent_state_shape, expert_env.observation_space.shape[0])
+    
+    #optimizer = torch.optim.Adam(encoder.parameters(), lr=3e-4)
+    
+    optimizer = optax.adamw(learning_rate=3e-4)
+    encoder_state = train_state.TrainState.create(apply_fn=encoder.apply,
+                                                  params=params,
+                                                  tx=optimizer)
+    
+    def opt_fn(loss_fn, model, obs):
+        grad_fn = jax.value_and_grad(loss_fn,
+                                    has_aux=False)
+        loss, grads = grad_fn(encoder_state, encoder_state.params, obs)
+        encoder_state = encoder_state.apply_gradients(grads=grads)
+        
+        #optimizer.zero_grad()
+        #loss.backward()
+        #optimizer.step()
 
     return OTRewardsExpertFactoryCrossDomain().apply(
-        expert_dataset, embed_model=encoder, opt_fn=opt_fn
+        params, expert_dataset, embed_model=encoder, opt_fn=opt_fn
     )
 
 

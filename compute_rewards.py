@@ -16,7 +16,7 @@ import typing as tp
 
 import torch.nn as nn
 
-from test_encoder import Encoder
+
 from absl import flags
 
 FLAGS = flags.FLAGS
@@ -162,6 +162,7 @@ class OTRewardsExpert(RewardsExpert):
 class OTRewardsExpertCrossDomain(RewardsExpert):
     def __init__(
         self,
+        params,
         expert_data: ExpertData,
         embed_model: nn.Module,
         opt_fn: tp.Callable[[torch.Tensor], None],
@@ -176,19 +177,17 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-        self.states_pair_buffer = ListBuffer(n=10)
+        self.states_pair_buffer = ListBuffer(n=50)
 
         # Init model
         self.model = embed_model
-
-    def torch_cost_matrix(self, states_pair_torch: torch.Tensor):
-        expert_states_pair = torch.from_numpy(self.expert_states_pair).to(
-            torch.device("cuda:1")
-        )
+        self.params = params
+        
+    def cost_matrix_fn(self, states_pair):
         dist = (
             (
-                states_pair_torch[:, None]
-                - expert_states_pair[
+                states_pair[:, None]
+                - self.expert_states_pair[
                     None,
                 ]
             )
@@ -197,7 +196,12 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             .sqrt()
         )
         return dist
-
+    
+    def loss_fn(self, torch_t_matrix, torch_cost):
+        loss = (torch_t_matrix * torch_cost).sum()
+        
+        return loss
+    
     def optim_embed(self) -> None:
 
         (
@@ -205,7 +209,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             next_observations,
             transport_matrix,
         ) = self.states_pair_buffer.sample()
-
+        
+        '''
         embed_obs = self.model(
             torch.from_numpy(observations).to(torch.device("cuda:1"))
         )
@@ -216,8 +221,16 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
 
         torch_t_matrix = torch.from_numpy(transport_matrix).to(torch.device("cuda:1"))
         torch_cost = self.torch_cost_matrix(states_pair_torch)
-        loss = (torch_t_matrix * torch_cost).sum()
-        self.opt_fn(loss=loss, model=self.model)
+        loss = (torch_t_matrix * torch_cost).sum() 
+        '''
+        
+        embed_obs = self.model.apply(self.params, observations, mutable=['batch_stats'])
+        next_embed_obs = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
+        states_pair_torch = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
+        cost_matrix = self.cost_matrix_fn(states_pair_torch)
+        
+        loss = self.loss_fn(transport_matrix, cost_matrix)
+        self.opt_fn(loss_fn=loss, model=self.model, obs=embed_obs)
 
     def warmup(self) -> None:
         self.optim_embed()
@@ -225,20 +238,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        
-        with torch.no_grad():
-            embeded_observations = (
-                self.model(torch.from_numpy(observations).to(torch.device("cuda:1")))
-                .cpu()
-                .numpy()
-            )
-            embeded_next_observations = (
-                self.model(
-                    torch.from_numpy(next_observations).to(torch.device("cuda:1"))
-                )
-                .cpu()
-                .numpy()
-            )
+        embeded_observations = self.model.apply(self.params, observations, mutable=['batch_stats'])
+        embeded_next_observations = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
 
         states_pair = np.concatenate(
             [embeded_observations, embeded_next_observations], axis=1
@@ -327,6 +328,7 @@ class OTRewardsExpertFactory:
 class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
     def apply(
         self,
+        params,
         dataset: D4RLDataset,
         embed_model: torch.nn.Module,
         opt_fn: tp.Callable[[torch.Tensor], None],
@@ -334,5 +336,5 @@ class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
 
         expert = super().apply(dataset)
         return OTRewardsExpertCrossDomain(
-            expert_data=expert.expert_data, embed_model=embed_model, opt_fn=opt_fn
+            params=params, expert_data=expert.expert_data, embed_model=embed_model, opt_fn=opt_fn
         )
