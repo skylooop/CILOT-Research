@@ -224,8 +224,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         loss = (torch_t_matrix * torch_cost).sum() 
         '''
         
-        embed_obs = self.model.apply(self.params, observations, mutable=['batch_stats'])
-        next_embed_obs = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
+        embed_obs, obs_updated_params = self.model.apply(self.params, observations, mutable=['batch_stats'])
+        next_embed_obs, next_updated_params = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
         states_pair_torch = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
         cost_matrix = self.cost_matrix_fn(states_pair_torch)
         
@@ -242,7 +242,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         embeded_next_observations = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
 
         states_pair = np.concatenate(
-            [embeded_observations, embeded_next_observations], axis=1
+            [embeded_observations[0], embeded_next_observations[0]], axis=1
         )
 
         self.preproc.fit(states_pair)
