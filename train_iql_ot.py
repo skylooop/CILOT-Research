@@ -46,7 +46,7 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".8"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -137,11 +137,10 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
                                                   params=params,
                                                   tx=optimizer)
     
-    def opt_fn(loss_fn, model, obs):
-        grad_fn = jax.value_and_grad(loss_fn,
-                                    has_aux=False)
-        loss, grads = grad_fn(encoder_state, encoder_state.params, obs)
-        encoder_state = encoder_state.apply_gradients(grads=grads)
+    def opt_fn(params, loss_fn, model, obs):
+        loss, grads = jax.value_and_grad(params)
+        updates, opt_state = optimizer.update(grads, encoder_state)
+        params = optax.apply_updates(params, updates)
         
         #optimizer.zero_grad()
         #loss.backward()

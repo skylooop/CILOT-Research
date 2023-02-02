@@ -184,17 +184,13 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.params = params
         
     def cost_matrix_fn(self, states_pair):
-        dist = (
-            (
+        dist = jnp.sum(jnp.sqrt(jnp.power(
+            
                 states_pair[:, None]
                 - self.expert_states_pair[
                     None,
                 ]
-            )
-            .pow(2)
-            .sum(-1)
-            .sqrt()
-        )
+            ,jnp.array(2))), axis=-1)
         return dist
     
     def loss_fn(self, torch_t_matrix, torch_cost):
@@ -226,8 +222,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         embed_obs, obs_updated_params = self.model.apply(self.params, observations, mutable=['batch_stats'])
         next_embed_obs, next_updated_params = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
-        states_pair_torch = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
-        cost_matrix = self.cost_matrix_fn(states_pair_torch)
+        states_pair = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
+        cost_matrix = self.cost_matrix_fn(states_pair)
         
         loss = self.loss_fn(transport_matrix, cost_matrix)
         self.opt_fn(loss_fn=loss, model=self.model, obs=embed_obs)
