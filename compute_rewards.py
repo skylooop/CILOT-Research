@@ -10,12 +10,10 @@ from ott.solvers.linear import sinkhorn
 from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
 from sklearn import preprocessing
 from tqdm import tqdm
-import torch
 
+from optimization import OptimizeLoop_JAX
 import typing as tp
-
 import torch.nn as nn
-
 
 from absl import flags
 
@@ -162,10 +160,10 @@ class OTRewardsExpert(RewardsExpert):
 class OTRewardsExpertCrossDomain(RewardsExpert):
     def __init__(
         self,
-        params,
         expert_data: ExpertData,
-        embed_model: nn.Module,
-        opt_fn: tp.Callable[[torch.Tensor], None],
+        encoder_class: OptimizeLoop_JAX,
+        #embed_model: nn.Module,
+        #opt_fn: tp.Callable[[torch.Tensor], None],
         cost_fn: CostFn = costs.Euclidean(),
         epsilon=0.01,
     ):
@@ -173,15 +171,13 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             [expert_data.observations, expert_data.next_observations], axis=1
         )
         self.cost_fn = cost_fn
-        self.opt_fn = opt_fn
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
         self.states_pair_buffer = ListBuffer(n=50)
-
-        # Init model
-        self.model = embed_model
-        self.params = params
+        
+        self.encoder_class = encoder_class
+        
         
     def cost_matrix_fn(self, states_pair):
         dist = jnp.sum(jnp.sqrt(jnp.power(
@@ -193,11 +189,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             ,jnp.array(2))), axis=-1)
         return dist
     
-    def loss_fn(self, torch_t_matrix, torch_cost):
-        loss = (torch_t_matrix * torch_cost).sum()
-        
-        return loss
-    
     def optim_embed(self) -> None:
 
         (
@@ -205,37 +196,19 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             next_observations,
             transport_matrix,
         ) = self.states_pair_buffer.sample()
-        
-        '''
-        embed_obs = self.model(
-            torch.from_numpy(observations).to(torch.device("cuda:1"))
-        )
-        next_embed_obs = self.model(
-            torch.from_numpy(next_observations).to(torch.device("cuda:1"))
-        )
-        states_pair_torch = torch.cat([embed_obs, next_embed_obs], 1)
-
-        torch_t_matrix = torch.from_numpy(transport_matrix).to(torch.device("cuda:1"))
-        torch_cost = self.torch_cost_matrix(states_pair_torch)
-        loss = (torch_t_matrix * torch_cost).sum() 
-        '''
-        
-        embed_obs, obs_updated_params = self.model.apply(self.params, observations, mutable=['batch_stats'])
-        next_embed_obs, next_updated_params = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
+        embed_obs, next_embed_obs = self.encoder_class.embedding(observations, next_observations)
         states_pair = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
         cost_matrix = self.cost_matrix_fn(states_pair)
+        self.encoder_class.optimize(embed_obs, next_embed_obs, transport_matrix, cost_matrix)
         
-        loss = self.loss_fn(transport_matrix, cost_matrix)
-        self.opt_fn(loss_fn=loss, model=self.model, obs=embed_obs)
-
     def warmup(self) -> None:
         self.optim_embed()
 
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        embeded_observations = self.model.apply(self.params, observations, mutable=['batch_stats'])
-        embeded_next_observations = self.model.apply(self.params, next_observations, mutable=['batch_stats'])
+        embeded_observations = self.encoder_class.encoder.apply(self.encoder_class.params, observations, mutable=['batch_stats'])
+        embeded_next_observations =self.encoder_class.encoder.apply(self.encoder_class.params, next_observations, mutable=['batch_stats'])
 
         states_pair = np.concatenate(
             [embeded_observations[0], embeded_next_observations[0]], axis=1
@@ -256,12 +229,12 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         ot_sink = solver(ot_prob)
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
         rewards = -transp_cost
-
-        # ((999, obs_shape), (999, obs_shape), (999, 999))
+        
         self.states_pair_buffer.append(
             (observations, next_observations, np.asarray(ot_sink.matrix))
         )
-
+        
+        self.warmup()
         return np.asarray(rewards)
 
 
@@ -324,13 +297,13 @@ class OTRewardsExpertFactory:
 class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
     def apply(
         self,
-        params,
         dataset: D4RLDataset,
-        embed_model: torch.nn.Module,
-        opt_fn: tp.Callable[[torch.Tensor], None],
+        encoder_class: OptimizeLoop_JAX,
+        #embed_model: torch.nn.Module,
+        #opt_fn: tp.Callable[[torch.Tensor], None],
     ) -> OTRewardsExpert:
 
         expert = super().apply(dataset)
         return OTRewardsExpertCrossDomain(
-            params=params, expert_data=expert.expert_data, embed_model=embed_model, opt_fn=opt_fn
+            expert_data=expert.expert_data, encoder_class=encoder_class
         )

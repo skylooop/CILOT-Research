@@ -14,7 +14,7 @@ class Encoder_JAX(nn.Module):
     train: bool
     
     @nn.compact
-    def __call__(self, *args, **kwargs) -> tp.Any:
+    def __call__(self, *args) -> tp.Any:
         embedding_agent_state = nn.Dense(features=self.num_hidden)(args[0])
         embedding_agent_state = nn.tanh(embedding_agent_state)
         embedding_agent_state = nn.BatchNorm(use_running_average=not self.train)(embedding_agent_state)
@@ -28,7 +28,7 @@ class Encoder_JAX(nn.Module):
         embedding_agent_state = nn.BatchNorm(use_running_average=not self.train)(embedding_agent_state)
         
         embedding_agent_state = nn.Dense(features=self.expert_state_shape)(embedding_agent_state)
-        embedding_agent_state = nn.tanh(embedding_agent_state)
+        #embedding_agent_state = nn.tanh(embedding_agent_state)
         
         return embedding_agent_state
         
@@ -41,6 +41,6 @@ if __name__ == "__main__":
     inp = jax.random.normal(inp, (1, 17))
     params = encoder.init(rng_model, inp)
     
-    encoder.apply(params, inp, mutable=['batch_stats'])
+    #encoder.apply(params, inp, mutable=['batch_stats'])
     
     print(encoder)

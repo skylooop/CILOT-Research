@@ -27,8 +27,8 @@ from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
+from optimization import OptimizeLoop_JAX
 
-#from test_encoder import Encoder
 from encoder_jax import Encoder_JAX
 from agent.iql.common import Model
 # Loggers builder
@@ -89,20 +89,6 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
-
-def prepare_encoder(agent_state_shape, expert_state_shape):
-    rng = jax.random.PRNGKey(FLAGS.seed)
-    rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
-    encoder = Encoder_JAX(agent_state_shape, expert_state_shape, train=True)
-    dummy = jax.random.normal(dummy_inp_rng, (1, agent_state_shape))
-    params = encoder.init(model_rng, dummy)
-    
-    encoder.apply(params, dummy, mutable=['batch_stats'])
-    
-    return encoder, params, model_rng
-    
-    
-
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
 
@@ -126,28 +112,11 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
-
-    #encoder = Encoder(agent_state_shape, expert_env.observation_space.shape[0]).to(torch.device("cuda:1"))
-    encoder, params, model_rng = prepare_encoder(agent_state_shape, expert_env.observation_space.shape[0])
     
-    #optimizer = torch.optim.Adam(encoder.parameters(), lr=3e-4)
-    
-    optimizer = optax.adamw(learning_rate=3e-4)
-    encoder_state = train_state.TrainState.create(apply_fn=encoder.apply,
-                                                  params=params,
-                                                  tx=optimizer)
-    
-    def opt_fn(params, loss_fn, model, obs):
-        loss, grads = jax.value_and_grad(params)
-        updates, opt_state = optimizer.update(grads, encoder_state)
-        params = optax.apply_updates(params, updates)
-        
-        #optimizer.zero_grad()
-        #loss.backward()
-        #optimizer.step()
+    encoder_class = OptimizeLoop_JAX(agent_state_shape, expert_env.observation_space.shape[0])
 
     return OTRewardsExpertFactoryCrossDomain().apply(
-        params, expert_dataset, embed_model=encoder, opt_fn=opt_fn
+        encoder_class, expert_dataset,
     )
 
 
