@@ -116,7 +116,8 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
     encoder_class = OptimizeLoop_JAX(agent_state_shape, expert_env.observation_space.shape[0])
 
     return OTRewardsExpertFactoryCrossDomain().apply(
-        encoder_class, expert_dataset,
+        expert_dataset,
+        encoder_class
     )
 
 
