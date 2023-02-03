@@ -25,13 +25,14 @@ class OptimizeLoop_JAX:
     
     @staticmethod
     def cost_matrix_fn(states_pair, expert_states_pair):
-        dist = jnp.sum(jnp.sqrt(jnp.power(
+        dist = jnp.sqrt(jnp.sum(jnp.power(
             
                 states_pair[:, None]
                 - expert_states_pair[
                     None,
                 ]
-            ,jnp.array(2))), axis=-1)
+            ,jnp.array(2)), axis=-1))
+        
         return dist
     
     def OT_loss(self, params, observations, next_observations, expert_states_pair, transport_matrix):
