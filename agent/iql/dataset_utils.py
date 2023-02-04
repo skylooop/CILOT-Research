@@ -11,7 +11,6 @@ import d4rl
 import gym
 import numpy as np
 from tqdm import tqdm
-import ot
 
 from absl import flags
 

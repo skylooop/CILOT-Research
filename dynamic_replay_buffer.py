@@ -4,8 +4,6 @@ from typing import Optional
 import gym
 import numpy as np
 
-# from tqdm import tqdm
-import ot
 
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import RewardsScaler, RewardsExpert

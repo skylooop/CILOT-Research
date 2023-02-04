@@ -27,7 +27,7 @@ from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
-from optimization import OptimizeLoop_JAX
+from optimization import OptimizeLoop_JAX, create_encoder
 
 from encoder_jax import Encoder_JAX
 from agent.iql.common import Model
@@ -85,7 +85,7 @@ flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 40000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 100000, "Offline data size (uses all data if unspecified)." #100000
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
@@ -113,7 +113,7 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
     
-    encoder_class = OptimizeLoop_JAX(agent_state_shape, expert_env.observation_space.shape[0])
+    encoder_class = create_encoder(agent_state_shape, expert_env.observation_space.shape[0])
 
     return OTRewardsExpertFactoryCrossDomain().apply(
         expert_dataset,
@@ -256,7 +256,6 @@ def main(_):
         disable=not FLAGS.tqdm,
     ):
         if i >= FLAGS.num_pretraining_steps:
-            expert.model.eval()
             
             agent.expectile = 0.7
             expert.preproc.enabled = False

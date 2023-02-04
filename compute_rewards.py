@@ -2,6 +2,7 @@ import collections
 from abc import ABC, abstractmethod
 from typing import List
 import numpy as np
+from flax.training import train_state
 from jax import numpy as jnp
 from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
@@ -11,7 +12,7 @@ from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
 from sklearn import preprocessing
 from tqdm import tqdm
 
-from optimization import OptimizeLoop_JAX
+from optimization import uptade_encoder, embed
 import typing as tp
 import torch.nn as nn
 
@@ -161,7 +162,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def __init__(
         self,
         expert_data: ExpertData,
-        encoder_class: OptimizeLoop_JAX,
+        encoder_class: train_state.TrainState,
         cost_fn: CostFn = costs.Euclidean(),
         epsilon=0.01,
     ):
@@ -184,7 +185,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
             transport_matrix,
         ) = self.states_pair_buffer.sample()
 
-        self.encoder_class.optimize(observations, next_observations, self.expert_states_pair, transport_matrix)
+        self.encoder_class, loss = uptade_encoder(self.encoder_class, observations, next_observations, self.expert_states_pair, transport_matrix)
+        # print(loss)
         
     def warmup(self) -> None:
         self.optim_embed()
@@ -192,11 +194,10 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        embeded_observations = self.encoder_class.encoder.apply(self.encoder_class.encoder_state.params, observations, mutable=['batch_stats'])
-        embeded_next_observations =self.encoder_class.encoder.apply(self.encoder_class.encoder_state.params, next_observations, mutable=['batch_stats'])
+        embeded_observations, embeded_next_observations = embed(self.encoder_class, observations, next_observations)
 
         states_pair = np.concatenate(
-            [embeded_observations[0], embeded_next_observations[0]], axis=1
+            [embeded_observations, embeded_next_observations], axis=1
         )
 
         self.preproc.fit(states_pair)
