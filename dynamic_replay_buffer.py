@@ -134,7 +134,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                     self.next_observations[0:i],
                     self.dones_float[0:i],
                 )
-                #self.expert.warmup()
                 self.insert_index = i
                 self.size = i
                 break

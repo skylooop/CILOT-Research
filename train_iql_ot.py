@@ -4,7 +4,6 @@ import gym
 import numpy as np
 import tqdm
 
-
 import flax.linen as nn
 import optax
 from absl import app, flags
@@ -22,17 +21,22 @@ from compute_rewards import (
     ExpRewardsScaler,
     OTRewardsExpertFactoryCrossDomain,
 )
+
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
-from optimization import OptimizeLoop_JAX, create_encoder
+from optimization import create_encoder
 
 from encoder_jax import Encoder_JAX
 from agent.iql.common import Model
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
+
+#HyperParameter Tuning
+import hydra
+from omegaconf import DictConfig
 
 # Environmental variables
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
@@ -46,7 +50,7 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".8"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -74,20 +78,21 @@ flags.DEFINE_string(
     "/home/m_bobrin/CILOT-Research/tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 42, "Random seed.")
+flags.DEFINE_integer("seed", 43, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.") #1e5
+flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
 flags.DEFINE_integer(
-    "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
+    "replay_buffer_size", 300000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 100000, "Offline data size (uses all data if unspecified)." #100000
+    "init_dataset_size", 200000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
+
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     env = gym.make(env_name)
@@ -141,7 +146,6 @@ def update_buffer(
                 summary_writer.add_scalar(
                     f"training/{k}", v, info["total"]["timesteps"]
                 )
-
         # Wandb
         else:
             for k, v in info["episode"].items():
@@ -202,7 +206,7 @@ def evaluate(
         for k, v in stats.items():
             wandb.log({f"Evaluation/average_{k}s": v}, step=step)
 
-
+#@hydra.main(config_path="configs", config_name="config")
 def main(_):
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
@@ -245,7 +249,7 @@ def main(_):
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
         temperature=3.0,
-        expectile=0.8,
+        expectile=0.9,
     )
 
     observation = env.reset()
@@ -255,9 +259,10 @@ def main(_):
         smoothing=0.1,
         disable=not FLAGS.tqdm,
     ):
+        #callback to check increasing rewards 
         if i >= FLAGS.num_pretraining_steps:
             
-            agent.expectile = 0.7
+            agent.expectile = 0.7 # increase
             expert.preproc.enabled = False
             
             action = agent.sample_actions(

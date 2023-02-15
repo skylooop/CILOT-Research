@@ -145,7 +145,7 @@ class OTRewardsExpert(RewardsExpert):
         b = jnp.ones((y.shape[0],)) / y.shape[0]
 
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b)
+        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.8, tau_b=0.8)
         solver = sinkhorn.Sinkhorn()
 
         ot_sink = solver(ot_prob)
@@ -173,7 +173,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-        self.states_pair_buffer = ListBuffer(n=50)
+        self.states_pair_buffer = ListBuffer(n=20)
         
         self.encoder_class = encoder_class
         
@@ -186,7 +186,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         ) = self.states_pair_buffer.sample()
 
         self.encoder_class, loss = uptade_encoder(self.encoder_class, observations, next_observations, self.expert_states_pair, transport_matrix)
-        # print(loss)
         
     def warmup(self) -> None:
         self.optim_embed()
@@ -209,7 +208,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         b = jnp.ones((y.shape[0],)) / y.shape[0]
 
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b)
+        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.95, tau_b=0.95)
         solver = sinkhorn.Sinkhorn()
 
         ot_sink = solver(ot_prob)
@@ -284,7 +283,7 @@ class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
     def apply(
         self,
         dataset: D4RLDataset,
-        encoder_class: OptimizeLoop_JAX,
+        encoder_class,
     ) -> OTRewardsExpert:
 
         expert = super().apply(dataset)

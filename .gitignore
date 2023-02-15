@@ -4,6 +4,7 @@ tmp_data/
 d4rl/
 mine_npz/
 wandb/
+.idea/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
