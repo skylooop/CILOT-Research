@@ -13,24 +13,28 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(name="expert_env", default="InvertedPendulum-v4", help="Provide name of env to train on.")
 
-from stable_baselines3 import A2C, PPO
+from stable_baselines3 import PPO
+
 
 def main(_):
     env = gym.make(FLAGS.expert_env, render_mode='rgb_array')
     
-    model = A2C("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=1000)
+    model = PPO("MlpPolicy", env, verbose=1)
+    model.learn(total_timesteps=1e6)
     
+    model.save(f"/home/m_bobrin/CILOT-Research/dataAgg/pretrained/{model.__class__.__name__}")
     vec_env = model.get_env()
     obs = vec_env.reset()
     
     step_starting_index = 0
     episode_index = 0
     frames = []
+    
     for i in range(1000):
         action, _state = model.predict(obs, deterministic=True)
         obs, reward, done, info = vec_env.step(action) 
         frames.append(vec_env.render())
+        
         if done:
             save_video(
                 frames,
