@@ -206,7 +206,7 @@ def evaluate(
         for k, v in stats.items():
             wandb.log({f"Evaluation/average_{k}s": v}, step=step)
 
-#@hydra.main(config_path="configs", config_name="config")
+
 def main(_):
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
@@ -228,6 +228,7 @@ def main(_):
     
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
+    
     # Making expert
     expert = make_expert(
         dataset=dataset, agent_state_shape=env.observation_space.shape[0]
@@ -248,7 +249,7 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        temperature=3.0,
+        temperature=1.5,
         expectile=0.9,
     )
 
