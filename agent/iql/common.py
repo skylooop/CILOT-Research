@@ -82,7 +82,7 @@ class Model:
         grad_fn = jax.grad(loss_fn, has_aux=True)
         grads, info = grad_fn(self.params)
         # ?? clip gradients
-        grads = jnp.clip(grads, a_min=-2, a_max=2)
+        #grads = jnp.clip(grads, a_min=-2, a_max=2)
         updates, new_opt_state = self.tx.update(grads, self.opt_state,
                                                 self.params)
         new_params = optax.apply_updates(self.params, updates)

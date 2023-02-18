@@ -103,6 +103,12 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         rewards_scaler: RewardsScaler,
         rewards_expert: RewardsExpert,
     ):
+        """
+        Args:
+            observation_space (gym.spaces.Box): Agent env observation space dim
+            action_dim (int): Agent action space dim
+            capacity (int): size of buffer
+        """
         super().__init__(observation_space, action_dim, capacity)
 
         self.observations_cur = []
@@ -118,7 +124,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
         assert self.capacity > num_samples
 
-        print("Filling replay buffer and computing OT rewards")
+        print("Taking dummy agent trajectories and computing OT rewards")
         for i in range(num_samples - 1, len(dataset.observations)):
             if dataset.dones_float[i - 1] == 1.0:
                 self.observations[0:i] = dataset.observations[0:i]

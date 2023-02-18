@@ -34,23 +34,21 @@ from agent.iql.common import Model
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
-#HyperParameter Tuning
-import hydra
-from omegaconf import DictConfig
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
 
 # Environmental variables
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".8"
-#os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # Arguments
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
+flags.DEFINE_string("env_name", "hopper-medium-v2", "Environment name.")
 flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -82,26 +80,35 @@ flags.DEFINE_integer("seed", 43, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
-flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
-flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
+flags.DEFINE_integer("batch_size", 512, "Mini batch size.") #256
+flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
+flags.DEFINE_integer("num_pretraining_steps", int(2e5), "Number of pretraining steps.") #1e5
 flags.DEFINE_integer(
     "replay_buffer_size", 300000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 200000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 250000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
+    """
+    Makes d4rl dataset from dummy agent and return its environment
+    
+    Args:
+        env_name (str): Name of the agent environment
+        seed (int): Seed
+
+    Returns:
+        Tuple[gym.Env, D4RLDataset]
+    """
     env = gym.make(env_name)
 
-    env = EpisodeMonitor(env)  # action wrapper
-    env = SinglePrecision(env)  # observation wrapper
+    env = EpisodeMonitor(env)
+    env = SinglePrecision(env)
 
     env.seed(seed)
-
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
 
@@ -110,7 +117,7 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     return env, dataset
 
 
-def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert:
+def make_expert(agent_state_shape: int) -> OTRewardsExpert:
     """
     dataset - expert dataset
     """
@@ -122,7 +129,8 @@ def make_expert(dataset: D4RLDataset, agent_state_shape: int) -> OTRewardsExpert
 
     return OTRewardsExpertFactoryCrossDomain().apply(
         expert_dataset,
-        encoder_class
+        encoder_class,
+        type="CrossDomain"
     )
 
 
@@ -150,7 +158,7 @@ def update_buffer(
         else:
             for k, v in info["episode"].items():
                 wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])
-    return next_observation
+    return next_observation, reward ####
 
 
 def evaluate(
@@ -230,9 +238,7 @@ def main(_):
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
     
     # Making expert
-    expert = make_expert(
-        dataset=dataset, agent_state_shape=env.observation_space.shape[0]
-    )
+    expert = make_expert(agent_state_shape=env.observation_space.shape[0])
 
     action_dim = env.action_space.shape[0]
     replay_buffer = ReplayBufferWithDynamicRewards(
@@ -250,11 +256,12 @@ def main(_):
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
         temperature=1.5,
-        expectile=0.9,
+        expectile=0.6,
     )
 
     observation = env.reset()
-
+    prev_rew = -1e5
+    
     for i in tqdm.tqdm(
         range(FLAGS.num_pretraining_steps + FLAGS.max_steps),
         smoothing=0.1,
@@ -263,16 +270,20 @@ def main(_):
         #callback to check increasing rewards 
         if i >= FLAGS.num_pretraining_steps:
             
-            agent.expectile = 0.7 # increase
+            #agent.expectile = 0.9 # increase
             expert.preproc.enabled = False
             
             action = agent.sample_actions(
                 observation,
             )
-            action = np.clip(action, -1, 1)
-            observation = update_buffer(
+            action = np.clip(action, -2, 2)
+            observation, reward = update_buffer(
                 observation, action, replay_buffer, env, summary_writer
             )
+            if reward > prev_rew:
+                agent.expectile = 0.9 # increase
+            else:
+                agent.expectile = 0.7
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)

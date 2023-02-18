@@ -247,7 +247,7 @@ def split_into_trajectories(
 
 
 class OTRewardsExpertFactory:
-    def apply(self, dataset: D4RLDataset) -> OTRewardsExpert:
+    def apply(self, dataset: D4RLDataset, type: str, encoder_class: train_state.TrainState) -> OTRewardsExpert:
         trajs = split_into_trajectories(
             dataset.observations,
             dataset.actions,
@@ -272,21 +272,31 @@ class OTRewardsExpertFactory:
         best_traj_states = np.stack([el[0] for el in best_traj])
         best_traj_next_states = np.stack([el[-1] for el in best_traj])
 
-        return OTRewardsExpert(
-            ExpertData(
-                observations=best_traj_states, next_observations=best_traj_next_states
+        
+        if type == "CrossDomain":
+            return OTRewardsExpertCrossDomain(
+                ExpertData(
+                    observations=best_traj_states, next_observations=best_traj_next_states
+            ), encoder_class=encoder_class)
+        else: 
+            return OTRewardsExpert(
+                ExpertData(
+                    observations=best_traj_states, next_observations=best_traj_next_states
+                )
             )
-        )
 
 
-class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
+class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExpertCrossDomain
     def apply(
         self,
         dataset: D4RLDataset,
         encoder_class,
+        type="CrossDomain"
     ) -> OTRewardsExpert:
 
-        expert = super().apply(dataset)
-        return OTRewardsExpertCrossDomain(
-            expert_data=expert.expert_data, encoder_class=encoder_class
-        )
+        expert = super().apply(dataset, type, encoder_class)
+        
+        return expert
+        #return OTRewardsExpertCrossDomain(
+        #    expert_data=expert.expert_data, encoder_class=encoder_class
+        #)

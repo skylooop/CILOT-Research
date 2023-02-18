@@ -121,7 +121,7 @@ class Learner(object):
         self.rng = rng
 
         actions = np.asarray(actions)
-        return np.clip(actions, -1, 1)
+        return np.clip(actions, -2, 2) #change to env max actions
 
     def update(self, batch: Batch) -> InfoDict:
         new_rng, new_actor, new_critic, new_value, new_target_critic, info = _update_jit(
