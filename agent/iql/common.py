@@ -81,8 +81,9 @@ class Model:
     def apply_gradient(self, loss_fn) -> Tuple[Any, 'Model']:
         grad_fn = jax.grad(loss_fn, has_aux=True)
         grads, info = grad_fn(self.params)
-        # ?? clip gradients
-        #grads = jnp.clip(grads, a_min=-2, a_max=2)
+        # Clip gradient
+        clip_fn = lambda x: jnp.clip(x, -1.5, 1.5)
+        grads = jax.tree_util.tree_map(clip_fn, grads)
         updates, new_opt_state = self.tx.update(grads, self.opt_state,
                                                 self.params)
         new_params = optax.apply_updates(self.params, updates)
