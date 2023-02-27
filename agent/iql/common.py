@@ -34,7 +34,7 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
-            x = nn.Dense(size, kernel_init=default_init())(x)
+            x = nn.Dense(size)(x)
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 x = self.activations(x)
                 if self.dropout_rate is not None:

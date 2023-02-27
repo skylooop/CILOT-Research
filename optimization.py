@@ -16,11 +16,11 @@ def create_encoder(agent_state_shape: int, expert_state_shape: int):
     rng = jax.random.PRNGKey(FLAGS.seed)
     rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
     #encoder = Encoder_JAX(num_hidden=64, expert_state_shape=expert_state_shape)
-    encoder = MLP((64, expert_state_shape))
+    encoder = MLP((128, 64, expert_state_shape))
     dummy = jax.random.normal(dummy_inp_rng, (1, agent_state_shape))
-    params = encoder.init(model_rng, dummy)
+    params = encoder.init(model_rng, dummy, training=True)
 
-    optimizer = optax.adamw(learning_rate=3e-4)
+    optimizer = optax.adamw(learning_rate=2e-5)
     encoder_state = train_state.TrainState.create(
         apply_fn=encoder.apply,
         tx=optimizer,

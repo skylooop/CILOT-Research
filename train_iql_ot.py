@@ -39,9 +39,9 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # opengl on headless server works only here
 os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
+os.environ["MUJOCO_EGL_DEVICES_ID"] = "0"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 # Arguments
@@ -73,7 +73,7 @@ flags.DEFINE_boolean(
 )
 flags.DEFINE_string(
     "path_to_save_env",
-    "/home/m_bobrin/CILOT-Research/tmp_data",
+    "/home/bobrin_m_s/Projects/CILOT-Research/tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
 flags.DEFINE_integer("seed", 43, "Random seed.")
@@ -81,13 +81,13 @@ flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluatio
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 128, "Mini batch size.") #256
-flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", int(1e5), "Number of pretraining steps.")
+flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
+flags.DEFINE_integer("num_pretraining_steps", int(1e6), "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 100000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 180000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 

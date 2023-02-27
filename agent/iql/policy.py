@@ -36,12 +36,10 @@ class NormalTanhPolicy(nn.Module):
                       dropout_rate=self.dropout_rate)(observations,
                                                       training=training)
 
-        means = nn.Dense(self.action_dim, kernel_init=default_init())(outputs)
+        means = nn.Dense(self.action_dim)(outputs)
 
         if self.state_dependent_std:
-            log_stds = nn.Dense(self.action_dim,
-                                kernel_init=default_init(
-                                    self.log_std_scale))(outputs)
+            log_stds = nn.Dense(self.action_dim)(outputs)
         else:
             log_stds = self.param('log_stds', nn.initializers.zeros,
                                   (self.action_dim, ))
