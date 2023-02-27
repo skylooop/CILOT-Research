@@ -6,12 +6,10 @@ import jax.numpy as jnp
 from ott.geometry import pointcloud, costs
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
-from ott.tools import transport
 import d4rl
 import gym
 import numpy as np
 from tqdm import tqdm
-import ot
 
 from absl import flags
 
