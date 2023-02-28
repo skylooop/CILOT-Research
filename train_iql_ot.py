@@ -5,9 +5,7 @@ import numpy as np
 import tqdm
 
 import flax.linen as nn
-import optax
 from absl import app, flags
-import jax
 from torch import Tensor
 from flax.training import train_state
 
@@ -29,7 +27,6 @@ from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
 from optimization import create_encoder
 
-from encoder_jax import Encoder_JAX
 from agent.iql.common import Model
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
@@ -48,8 +45,8 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "hopper-random-v2", "Environment name.")
-flags.DEFINE_string("expert_env_name", "walker2d-expert-v2", "Environment name.")
+flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment agent name.")
+flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
@@ -60,7 +57,7 @@ flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
-    "save_dir", "/home/m_bobrin/CILOT-Research/assets", "Logger logging dir."
+    "save_dir", "/home/bobrin_m_s/Projects/CILOT-Research/assets/video", "Logger logging dir."
 )
 
 flags.DEFINE_boolean(
@@ -80,8 +77,8 @@ flags.DEFINE_integer("seed", 43, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
-flags.DEFINE_integer("batch_size", 128, "Mini batch size.") #256
-flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
+flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
+flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", int(1e6), "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
@@ -224,7 +221,7 @@ def main(_):
 
     if FLAGS.logger == "Wandb":
         wandb_logger = InitWandb().init(
-            config=FLAGS,
+            config=FLAGS.flag_values_dict(),
             save_dir=FLAGS.save_dir,
             seed=FLAGS.seed,
             wandb_project_name=FLAGS.wandb_project_name,
@@ -255,23 +252,23 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        temperature=1.5,
+        temperature=1.3,
         expectile=0.6,
     )
 
     observation = env.reset()
-    prev_rew = -1e5
-    
+    expert.preproc.enabled = True
+    agent.expectile = 0.7
+
     for i in tqdm.tqdm(
         range(FLAGS.num_pretraining_steps + FLAGS.max_steps),
         smoothing=0.1,
         disable=not FLAGS.tqdm,
     ):
-        #callback to check increasing rewards 
         if i >= FLAGS.num_pretraining_steps:
             
-            #agent.expectile = 0.9 # increase
-            #expert.preproc.enabled = False
+            agent.expectile = 0.9
+            expert.preproc.enabled = False
             
             action = agent.sample_actions(
                 observation,
@@ -280,12 +277,7 @@ def main(_):
             observation, reward = update_buffer(
                 observation, action, replay_buffer, env, summary_writer
             )
-            if reward > prev_rew:
-                agent.expectile = 0.9 # increase
-                expert.preproc.enabled = False
-            else:
-                expert.preproc.enabled = True
-                agent.expectile = 0.7
+
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
