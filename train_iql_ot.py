@@ -6,15 +6,12 @@ import tqdm
 
 import flax.linen as nn
 from absl import app, flags
-from torch import Tensor
-from flax.training import train_state
 
 import wandb
 from tensorboardX import SummaryWriter
 
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
-    OTRewardsExpertFactory,
     OTRewardsExpert,
     ExpRewardsScaler,
     OTRewardsExpertFactoryCrossDomain,
@@ -26,8 +23,8 @@ from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
 from optimization import create_encoder
+import torch
 
-from agent.iql.common import Model
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
@@ -45,11 +42,11 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment agent name.")
+flags.DEFINE_string("env_name", "halfcheetah-random-v2", "Environment agent name.")
 flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
-flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
+flags.DEFINE_enum("logger", "Tensorboard", ["Wandb", "Tensorboard"], help="define loggers")
 
 # Wandb params
 flags.DEFINE_string("wandb_project_name", "CILOT", help="Current run name")
@@ -73,7 +70,7 @@ flags.DEFINE_string(
     "/home/bobrin_m_s/Projects/CILOT-Research/tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 43, "Random seed.")
+flags.DEFINE_integer("seed", 40, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
@@ -81,10 +78,10 @@ flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", int(1e6), "Number of pretraining steps.")
 flags.DEFINE_integer(
-    "replay_buffer_size", 200000, "Replay buffer size (=max_steps if unspecified)."
+    "replay_buffer_size", 150000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 180000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 
@@ -187,7 +184,7 @@ def evaluate(
     for k, v in stats.items():
         stats[k] = np.mean(v)
 
-    print("Saving video")
+    print("Saving video to: ")
     print(FLAGS.save_dir)
 
     video.save(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
@@ -245,6 +242,7 @@ def main(_):
         ExpRewardsScaler(),
         expert,
     )
+
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
     
     agent = Learner(
@@ -252,13 +250,12 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        temperature=1.3,
+        temperature=1.4,
         expectile=0.6,
     )
 
     observation = env.reset()
     expert.preproc.enabled = True
-    agent.expectile = 0.7
 
     for i in tqdm.tqdm(
         range(FLAGS.num_pretraining_steps + FLAGS.max_steps),
@@ -267,13 +264,13 @@ def main(_):
     ):
         if i >= FLAGS.num_pretraining_steps:
             
-            agent.expectile = 0.9
-            expert.preproc.enabled = False
+            agent.expectile = 0.85
+            #expert.preproc.enabled = False
             
             action = agent.sample_actions(
                 observation,
             )
-            action = np.clip(action, -2, 2)
+            action = np.clip(action, -1.5, 1.5)
             observation, reward = update_buffer(
                 observation, action, replay_buffer, env, summary_writer
             )

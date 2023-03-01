@@ -32,7 +32,6 @@ class VideoRecorder(object):
                 mode="rgb_array",
                 height=self.height,
                 width=self.width
-                #camera_id=self.camera_id
             )
             self.frames.append(frame)
 
