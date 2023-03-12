@@ -84,7 +84,7 @@ flags.DEFINE_integer(
     "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-
+flags.DEFINE_integer("topk", default=10, help="Number of trajectories to use from expert.")
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -148,7 +148,6 @@ def update_buffer(
                 summary_writer.add_scalar(
                     f"training/{k}", v, info["total"]["timesteps"]
                 )
-        # Wandb
         else:
             for k, v in info["episode"].items():
                 wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])

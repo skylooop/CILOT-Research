@@ -1,9 +1,11 @@
 import collections
 from abc import ABC, abstractmethod
-from typing import List
+
 import numpy as np
 from flax.training import train_state
 from jax import numpy as jnp
+
+import ott
 from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
 from ott.problems.linear import linear_problem
@@ -68,31 +70,31 @@ class RewardsExpert(ABC):
         next_observations: np.ndarray,
         dones_float: np.ndarray,
     ) -> np.ndarray:
-
-        assert dones_float[-1] > 0.5
         i0 = 0
         rewards = []
 
-        # Each 1k step - terminate
+        # Gym Environments have restriction of 1k timesteps
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
             rewards.append(
-                self.compute_rewards_one_episode(
-                    observations[i0 : i1 + 1], next_observations[i0 : i1 + 1]
-                )
+                self.compute_rewards_one_episode(observations[i0 : i1 + 1], next_observations[i0 : i1 + 1])
             )
             i0 = i1 + 1
 
         return np.concatenate(rewards)
-
+    
     @abstractmethod
-    def warmup(self) -> None:
-        pass
+    def _pad(self, x, max_sequence_length: int):
+        ...
+    
+    @abstractmethod
+    def warmup(self):
+        ...
 
     @abstractmethod
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
-        pass
+        ...
 
 
 class Preprocessor:
@@ -131,6 +133,11 @@ class OTRewardsExpert(RewardsExpert):
 
         self.preproc = Preprocessor()
 
+    def _pad(self, x, max_sequence_length: int = 1000)
+        paddings = [(0, max_sequence_length - x.shape[0])]
+        paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
+        return np.pad(x, paddings, mode='constant', constant_values=0.)
+    
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
@@ -163,9 +170,14 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self,
         expert_data: ExpertData,
         encoder_class: train_state.TrainState,
-        cost_fn: CostFn = costs.Euclidean(),
-        epsilon=0.01,
+        cost_fn: CostFn = ott.geometry.costs.Cosine(),
+        epsilon=1e-2,
     ):
+        
+        expert_data.observations, _, _ = self._pad(expert_data.observations)
+        expert_data.next_observations, _, _ = self._pad(expert_data.next_observations)
+        
+        self.expert_weights = jnp.ones((expert_data.observations.shape[0],)) / 1000
         self.expert_states_pair = np.concatenate(
             [expert_data.observations, expert_data.next_observations], axis=1
         )
@@ -177,6 +189,11 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         self.encoder_class = encoder_class
         
+    def _pad(self, x, max_sequence_length: int = 1000):
+        paddings = [(0, max_sequence_length - x.shape[0])]
+        paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
+        return np.pad(x, paddings, mode='constant', constant_values=0.)
+    
     def optim_embed(self) -> None:
 
         (
@@ -190,11 +207,18 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def warmup(self) -> None:
         self.optim_embed()
 
+    @jax.jit
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
         embeded_observations, embeded_next_observations = embed(self.encoder_class, observations, next_observations)
-
+        embeded_observations = self._pad(embeded_observations)
+        embeded_next_observations = self._pad(embeded_observations)
+        
+        agent_weights = np.ones((observations.shape[0],)) / 1000
+        agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool))
+        
+        #agent pairs
         states_pair = np.concatenate(
             [embeded_observations, embeded_next_observations], axis=1
         )
@@ -204,11 +228,8 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         x = jnp.asarray(self.preproc.transform(states_pair))
         y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
 
-        a = jnp.ones((x.shape[0],)) / x.shape[0]
-        b = jnp.ones((y.shape[0],)) / y.shape[0]
-
         geom = pointcloud.PointCloud(x, y, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a, b, tau_a=0.95, tau_b=0.95)
+        ot_prob = linear_problem.LinearProblem(geom, agent_weights, self.expert_weights, tau_a=0.95, tau_b=0.95)
         solver = sinkhorn.Sinkhorn()
 
         ot_sink = solver(ot_prob)
@@ -218,6 +239,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.states_pair_buffer.append(
             (observations, next_observations, np.asarray(ot_sink.matrix))
         )
+        rewards = jnp.where(agent_mask, rewards, 0.)
         
         self.warmup()
         return np.asarray(rewards)
@@ -228,7 +250,7 @@ def split_into_trajectories(
 ):
     trajs = [[]]
 
-    print("Splitting into trajectories based on terminal states")
+    print("Splitting dataset into trajectories based on terminal condition")
     for i in tqdm(range(len(observations))):
         trajs[-1].append(
             (
@@ -246,7 +268,7 @@ def split_into_trajectories(
     return trajs
 
 
-class OTRewardsExpertFactory:
+class OTRewardsExpertFactory:    
     def apply(self, dataset: D4RLDataset, type: str, encoder_class: train_state.TrainState) -> OTRewardsExpert:
         trajs = split_into_trajectories(
             dataset.observations,
@@ -256,7 +278,16 @@ class OTRewardsExpertFactory:
             dataset.dones_float,
             dataset.next_observations,
         )
-
+        
+        episodic_returns = [
+            sum([info[2] for info in traj]) for traj in trajs
+        ]
+        idx = np.argpartition(episodic_returns, -FLAGS.topk)[-FLAGS.topk:]
+        expert_best_returns = [episodic_returns[i] for i in idx]
+        print(f"Best return examples: {expert_best_returns}")
+        best_traj = [trajs[i] for i in idx]
+        
+        '''
         def compute_returns(traj):
             episode_return = 0
             for _, _, rew, _, _, _ in traj:
@@ -267,17 +298,15 @@ class OTRewardsExpertFactory:
         # Choose best trajectories
         trajs.sort(key=compute_returns)
         best_traj = trajs[-1]
-
-        # Concat observations
-        best_traj_states = np.stack([el[0] for el in best_traj])
-        best_traj_next_states = np.stack([el[-1] for el in best_traj])
+        '''
+        #TODO pad all trajectories to same length
+        best_traj_states = np.stack([el[0] for el in best_traj], axis=0)
+        best_traj_next_states = np.stack([el[-1] for el in best_traj], axis=0)
 
         
         if type == "CrossDomain":
             return OTRewardsExpertCrossDomain(
-                ExpertData(
-                    observations=best_traj_states, next_observations=best_traj_next_states
-            ), encoder_class=encoder_class)
+                ExpertData(observations=best_traj_states, next_observations=best_traj_next_states), encoder_class=encoder_class)
         else: 
             return OTRewardsExpert(
                 ExpertData(
@@ -287,16 +316,7 @@ class OTRewardsExpertFactory:
 
 
 class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExpertCrossDomain
-    def apply(
-        self,
-        dataset: D4RLDataset,
-        encoder_class,
-        type="CrossDomain"
-    ) -> OTRewardsExpert:
-
+    
+    def apply(self, dataset: D4RLDataset, encoder_class, type="CrossDomain") -> OTRewardsExpert:
         expert = super().apply(dataset, type, encoder_class)
-        
         return expert
-        #return OTRewardsExpertCrossDomain(
-        #    expert_data=expert.expert_data, encoder_class=encoder_class
-        #)

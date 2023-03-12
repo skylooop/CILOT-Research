@@ -104,9 +104,7 @@ class Dataset:
 
 class D4RLDataset(Dataset):
     def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
-        if os.path.isfile(
-            os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
-        ):
+        if os.path.isfile(os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")):
             dataset = dict(
                 np.load(
                     os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
@@ -119,23 +117,15 @@ class D4RLDataset(Dataset):
                 os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
                 **dataset,
             )
-            print("saved")
-
+            print("Saving D4RL dataset to tmp folder")
         if clip_to_eps:
             lim = 1 - eps
             dataset["actions"] = np.clip(dataset["actions"], -lim, lim)
-
+            
         dones_float = np.zeros_like(dataset["rewards"])
-
+        
         for i in range(len(dones_float) - 1):
-            if (
-                np.linalg.norm(
-                    dataset["observations"][i + 1]
-                    - dataset["next_observations"][i]  # first term - before terminal state, second - next obs after reset
-                )
-                > 1e-6
-                or dataset["terminals"][i] == 1.0
-            ):
+            if (np.linalg.norm(dataset["observations"][i + 1] - dataset["next_observations"][i]) > 1e-6 or dataset["terminals"][i] == 1.0):
                 dones_float[i] = 1
             else:
                 dones_float[i] = 0
