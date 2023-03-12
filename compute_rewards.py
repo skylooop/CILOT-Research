@@ -6,6 +6,7 @@ from flax.training import train_state
 from jax import numpy as jnp
 
 import ott
+import jax
 from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
 from ott.problems.linear import linear_problem
@@ -133,7 +134,7 @@ class OTRewardsExpert(RewardsExpert):
 
         self.preproc = Preprocessor()
 
-    def _pad(self, x, max_sequence_length: int = 1000)
+    def _pad(self, x, max_sequence_length: int = 1000):
         paddings = [(0, max_sequence_length - x.shape[0])]
         paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
         return np.pad(x, paddings, mode='constant', constant_values=0.)
@@ -173,13 +174,13 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         cost_fn: CostFn = ott.geometry.costs.Cosine(),
         epsilon=1e-2,
     ):
+        expert_observations, expert_next_obsevations = expert_data.observations, expert_data.next_observations
+        expert_observations = self._pad(expert_observations)
+        expert_next_obsevations = self._pad(expert_next_obsevations)
         
-        expert_data.observations, _, _ = self._pad(expert_data.observations)
-        expert_data.next_observations, _, _ = self._pad(expert_data.next_observations)
-        
-        self.expert_weights = jnp.ones((expert_data.observations.shape[0],)) / 1000
+        self.expert_weights = jnp.ones((expert_observations.shape[0],)) / 1000
         self.expert_states_pair = np.concatenate(
-            [expert_data.observations, expert_data.next_observations], axis=1
+            [expert_observations, expert_next_obsevations], axis=1
         )
         self.cost_fn = cost_fn
         self.epsilon = epsilon
@@ -207,7 +208,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def warmup(self) -> None:
         self.optim_embed()
 
-    @jax.jit
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
@@ -300,8 +300,14 @@ class OTRewardsExpertFactory:
         best_traj = trajs[-1]
         '''
         #TODO pad all trajectories to same length
-        best_traj_states = np.stack([el[0] for el in best_traj], axis=0)
-        best_traj_next_states = np.stack([el[-1] for el in best_traj], axis=0)
+        for cur_traj in best_traj:
+            best_traj_states = [el[0] for el in cur_traj]
+        best_traj_states = np.stack(best_traj_states, axis=0)
+        best_traj_next_states = np.stack([el[-1] for el in cur_traj] for cur_traj in best_traj)
+        
+        #best_traj_next_states = np.stack([el[0] for el in cur_traj for cur_traj in best_traj])
+        #best_traj_states = np.stack([el[0] for el in best_traj])
+        #best_traj_next_states = np.stack([el[-1] for el in best_traj])
 
         
         if type == "CrossDomain":
@@ -320,3 +326,4 @@ class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExper
     def apply(self, dataset: D4RLDataset, encoder_class, type="CrossDomain") -> OTRewardsExpert:
         expert = super().apply(dataset, type, encoder_class)
         return expert
+

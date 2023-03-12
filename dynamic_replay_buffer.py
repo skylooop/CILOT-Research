@@ -133,12 +133,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                 self.dones_float[0:i] = dataset.dones_float[0:i]
                 self.next_observations[0:i] = dataset.next_observations[0:i]
                 # Replay buffer is empty at first iteration - cant warmup (sampling from empty buffer)
-                #self.rewards[0:i] = self.expert.compute_rewards(
-                #    self.observations[0:i],
-                #    self.next_observations[0:i],
-                #    self.dones_float[0:i],
-                #)
-                self.rewards[:i] = self.expert.compute_rewards(
+                self.rewards[0:i] = self.expert.compute_rewards(
                     self.observations[0:i],
                     self.next_observations[0:i],
                     self.dones_float[0:i],
