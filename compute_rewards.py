@@ -302,10 +302,11 @@ class OTRewardsExpertFactory:
         #TODO pad all trajectories to same length
         for cur_traj in best_traj:
             best_traj_states = [el[0] for el in cur_traj]
+            best_traj_next_states = [el[-1] for el in cur_traj]
+            
         best_traj_states = np.stack(best_traj_states, axis=0)
-        best_traj_next_states = np.stack([el[-1] for el in cur_traj] for cur_traj in best_traj)
+        best_traj_next_states = np.stack(best_traj_next_states, axis=0) 
         
-        #best_traj_next_states = np.stack([el[0] for el in cur_traj for cur_traj in best_traj])
         #best_traj_states = np.stack([el[0] for el in best_traj])
         #best_traj_next_states = np.stack([el[-1] for el in best_traj])
 
