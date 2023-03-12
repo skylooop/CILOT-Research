@@ -33,9 +33,9 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # opengl on headless server works only here
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
 os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "0"
+os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 # Arguments
@@ -54,7 +54,7 @@ flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
-    "save_dir", "/home/bobrin_m_s/Projects/CILOT-Research/assets/video", "Logger logging dir."
+    "save_dir", "assets/video", "Logger logging dir."
 )
 
 flags.DEFINE_boolean(
@@ -67,7 +67,7 @@ flags.DEFINE_boolean(
 )
 flags.DEFINE_string(
     "path_to_save_env",
-    "/home/bobrin_m_s/Projects/CILOT-Research/tmp_data",
+    "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
 flags.DEFINE_integer("seed", 40, "Random seed.")

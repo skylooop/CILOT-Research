@@ -10,6 +10,7 @@ import d4rl
 import gym
 import numpy as np
 from tqdm import tqdm
+import os
 
 from absl import flags
 
@@ -112,6 +113,7 @@ class D4RLDataset(Dataset):
                 )
             )
         else:
+            os.makedirs("tmp_data", exist_ok=True)
             dataset = d4rl.qlearning_dataset(env)
             np.savez(
                 os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
@@ -128,9 +130,13 @@ class D4RLDataset(Dataset):
         for i in range(len(dones_float) - 1):
             if (
                 np.linalg.norm(
-                    dataset["observations"][i + 1] - dataset["next_observations"][i]  # first term - before terminal state, second - next obs after reset
-                ) > 1e-6 or dataset["terminals"][i] == 1.0):
-                    dones_float[i] = 1
+                    dataset["observations"][i + 1]
+                    - dataset["next_observations"][i]  # first term - before terminal state, second - next obs after reset
+                )
+                > 1e-6
+                or dataset["terminals"][i] == 1.0
+            ):
+                dones_float[i] = 1
             else:
                 dones_float[i] = 0
 
