@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, Dict, Union
+from typing import Tuple, Union
 import gym
 import numpy as np
 import tqdm
@@ -23,7 +23,6 @@ from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
 from video import VideoRecorder
 from optimization import create_encoder
-import torch
 
 # Loggers builder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
@@ -33,9 +32,9 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"  # opengl on headless server works only here
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # opengl on headless server works only here
 os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
+os.environ["MUJOCO_EGL_DEVICES_ID"] = "0"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 # Arguments
@@ -70,10 +69,10 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 40, "Random seed.")
+flags.DEFINE_integer("seed", 1337, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
-flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
+flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", int(1e6), "Number of pretraining steps.")
@@ -84,7 +83,7 @@ flags.DEFINE_integer(
     "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-flags.DEFINE_integer("topk", default=10, help="Number of trajectories to use from")
+flags.DEFINE_integer("topk", default=20, help="Number of trajectories to use from")
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -161,6 +160,7 @@ def evaluate(
     num_episodes: int,
     summary_writer: Union[SummaryWriter, None],
 ):
+    os.makedirs(FLAGS.save_dir, exist_ok=True)
     stats = {"return": [], "length": []}
 
     video = VideoRecorder(FLAGS.save_dir, fps=20)
@@ -183,10 +183,9 @@ def evaluate(
     for k, v in stats.items():
         stats[k] = np.mean(v)
 
-    print("Saving video to: ")
-    print(FLAGS.save_dir)
+    print(f"Saving video to: {FLAGS.save_dir}")
 
-    video.save(f"{FLAGS.save_dir}/video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
+    video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
             {
@@ -249,8 +248,8 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        temperature=1.4,
-        expectile=0.6,
+        expectile=0.7,
+        temperature=3
     )
 
     observation = env.reset()

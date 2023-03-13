@@ -190,18 +190,14 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         self.encoder_class = encoder_class
         
-    def _pad(self, x, max_sequence_length: int = 1000):
+    def _pad(self, x, max_sequence_length: int = 999):
         paddings = [(0, max_sequence_length - x.shape[0])]
         paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
         return np.pad(x, paddings, mode='constant', constant_values=0.)
     
     def optim_embed(self) -> None:
 
-        (
-            observations,
-            next_observations,
-            transport_matrix,
-        ) = self.states_pair_buffer.sample()
+        observations, next_observations, transport_matrix = self.states_pair_buffer.sample()
 
         self.encoder_class, loss = uptade_encoder(self.encoder_class, observations, next_observations, self.expert_states_pair, transport_matrix)
         
@@ -211,6 +207,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
     def compute_rewards_one_episode(
         self, observations: np.ndarray, next_observations: np.ndarray
     ) -> np.ndarray:
+        
         embeded_observations, embeded_next_observations = embed(self.encoder_class, observations, next_observations)
         embeded_observations = self._pad(embeded_observations)
         embeded_next_observations = self._pad(embeded_observations)
