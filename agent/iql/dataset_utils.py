@@ -226,42 +226,6 @@ class ReplayBuffer(Dataset):
         self.insert_index = (self.insert_index + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
-
-def compute_rewards(self_states_pair: np.ndarray, expert_states_pair: np.ndarray):
-
-    x = jnp.asarray(self_states_pair)
-    y = jnp.asarray(expert_states_pair)
-    a = jnp.ones((x.shape[0],))
-    b = jnp.ones((y.shape[0],))
-    a, b = a / jnp.sum(a), b / jnp.sum(b)
-
-    geom = pointcloud.PointCloud(x, y, epsilon=0.01, cost_fn=costs.Euclidean())
-    ot_prob = linear_problem.LinearProblem(geom, a, b)
-    solver = sinkhorn.Sinkhorn()
-    ot_sink = solver(ot_prob)
-
-    transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
-    # rewards = 5 * jnp.exp(-transp_cost * transp_cost.shape[0]) - 2
-    # rewards = 2 - 2000 * transp_cost
-    rewards = -transp_cost
-
-    return rewards
-
-
-def compute_rewards_2(x, y, epsilon=0.01, niter=500):
-    mu_x = np.ones(x.shape[0]) * (1 / x.shape[0])
-    mu_y = np.ones(y.shape[0]) * (1 / y.shape[0])
-    c_m = ot.utils.dist(x, y, metric="cosine")
-    transport_plan = ot.sinkhorn_unbalanced(
-        mu_x, mu_y, c_m, epsilon, 20, numItermax=niter
-    )
-
-    transp_cost = jnp.sum(transport_plan * c_m, axis=1)
-    rewards = 5 * jnp.exp(-transp_cost * transp_cost.shape[0]) - 2
-
-    return rewards
-
-
 class RewardsScaler:
     def init(self, rewards: np.ndarray):
         self.min = np.quantile(np.abs(rewards).reshape(-1), 0.01)
