@@ -31,9 +31,9 @@ import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "0"
+os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 # Arguments
@@ -184,7 +184,7 @@ def evaluate(
 
     print(f"Saving video to: {FLAGS.save_dir}")
 
-    video.save(f"eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
+    video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
             {
