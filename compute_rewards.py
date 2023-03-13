@@ -189,7 +189,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         self.encoder_class = encoder_class
         
-    def _pad(self, x, max_sequence_length: int = 999, train: bool = True):
+    def _pad(self, x, max_sequence_length: int = 1000, train: bool = True):
         if train:
             paddings = [(0, max_sequence_length - x.shape[0])]
             paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
@@ -214,7 +214,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         embeded_observations = self._pad(embeded_observations, train=train)
         embeded_next_observations = self._pad(embeded_observations, train=train)
         
-        agent_weights = np.ones((observations.shape[0],)) / 999
+        agent_weights = np.ones((observations.shape[0],)) / 1000
         agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool), train=train)
         #agent pairs
         states_pair = np.concatenate(
@@ -234,18 +234,12 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
         
         rewards = -transp_cost
-        
-        self.states_pair_buffer.append(
-            (observations, next_observations, np.asarray(ot_sink.matrix))
-        )
+    
         rewards = jnp.where(agent_mask, rewards, 0.)
-        rewards = self.squashing_exponential(rewards) #from OTR
+        
+        
         self.warmup()
         return np.asarray(rewards)
-
-    def squashing_exponential(rewards, alpha: float = 5., beta: float = 5.):
-        """Compute squashed rewards with alpha * exp(beta * rewards)."""
-        return alpha * jnp.exp(beta * rewards)
 
 
 def split_into_trajectories(
