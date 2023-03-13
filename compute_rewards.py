@@ -190,10 +190,13 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         self.encoder_class = encoder_class
         
-    def _pad(self, x, max_sequence_length: int = 999):
-        paddings = [(0, max_sequence_length - x.shape[0])]
-        paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
-        return np.pad(x, paddings, mode='constant', constant_values=0.)
+    def _pad(self, x, max_sequence_length: int = 999, train: bool = True):
+        if train:
+            paddings = [(0, max_sequence_length - x.shape[0])]
+            paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
+            return np.pad(x, paddings, mode='constant', constant_values=0.)
+        else:
+            return x
     
     def optim_embed(self) -> None:
 
@@ -205,15 +208,15 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.optim_embed()
 
     def compute_rewards_one_episode(
-        self, observations: np.ndarray, next_observations: np.ndarray
+        self, observations: np.ndarray, next_observations: np.ndarray, train: bool = True
     ) -> np.ndarray:
         
         embeded_observations, embeded_next_observations = embed(self.encoder_class, observations, next_observations)
-        embeded_observations = self._pad(embeded_observations)
-        embeded_next_observations = self._pad(embeded_observations)
+        embeded_observations = self._pad(embeded_observations, train=train)
+        embeded_next_observations = self._pad(embeded_observations, train=train)
         
         agent_weights = np.ones((observations.shape[0],)) / 1000
-        agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool))
+        agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool), train=True)
         
         #agent pairs
         states_pair = np.concatenate(

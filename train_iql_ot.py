@@ -30,9 +30,8 @@ from loggers.loggers_wrapper import InitTensorboard, InitWandb
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
-
 # Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # opengl on headless server works only here
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["MUJOCO_EGL_DEVICES_ID"] = "0"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
@@ -53,7 +52,7 @@ flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
-    "save_dir", "assets/video", "Logger logging dir."
+    "save_dir", "assets/", "Logger logging dir."
 )
 
 flags.DEFINE_boolean(
@@ -69,7 +68,7 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 42, "Random seed.")
+flags.DEFINE_integer("seed", 146, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
@@ -160,7 +159,7 @@ def evaluate(
     num_episodes: int,
     summary_writer: Union[SummaryWriter, None],
 ):
-    os.makedirs(FLAGS.save_dir, exist_ok=True)
+    os.makedirs(FLAGS.save_dir +"/video", exist_ok=True)
     stats = {"return": [], "length": []}
 
     video = VideoRecorder(FLAGS.save_dir, fps=20)
@@ -185,7 +184,7 @@ def evaluate(
 
     print(f"Saving video to: {FLAGS.save_dir}")
 
-    video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
+    video.save(f"eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
             {
@@ -208,6 +207,11 @@ def evaluate(
 
 
 def main(_):
+    '''
+    Starting point
+    '''
+
+    print(f"Gym Version: {gym.__version__}")
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
             save_dir=FLAGS.save_dir, seed=FLAGS.seed
@@ -248,7 +252,7 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        expectile=0.8,
+        expectile=0.8, #same as in OTR paper
         temperature=3
     )
 

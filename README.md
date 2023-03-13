@@ -1,5 +1,5 @@
 # Cross Domain IL
-
+First, set environmental variables as shown below. Then, if you are working on headless server (e.g by ssh on cluster), then you need to change ``os.environ["MUJOCO_GL"] = "egl"`` and choose device which supports EGL rendering.
 ## Environmental variables:
 ```
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/bobrin_m_s/.mujoco/mujoco210/bin
