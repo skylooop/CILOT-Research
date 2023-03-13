@@ -68,15 +68,15 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 146, "Random seed.")
+flags.DEFINE_integer("seed", 553, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", int(1e6), "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
 flags.DEFINE_integer(
-    "replay_buffer_size", 150000, "Replay buffer size (=max_steps if unspecified)."
+    "replay_buffer_size", 170000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
     "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
@@ -272,7 +272,7 @@ def main(_):
             action = agent.sample_actions(
                 observation,
             )
-            action = np.clip(action, -1.5, 1.5)
+            action = np.clip(action, -1., 1.)
             observation, reward = update_buffer(
                 observation, action, replay_buffer, env, summary_writer
             )

@@ -11,7 +11,6 @@ from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
-from ott.solvers.linear.sinkhorn_lr import LRSinkhorn
 from sklearn import preprocessing
 from tqdm import tqdm
 
@@ -216,7 +215,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         embeded_next_observations = self._pad(embeded_observations, train=train)
         
         agent_weights = np.ones((observations.shape[0],)) / 1000
-        agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool), train=True)
+        agent_mask = self._pad(np.ones(observations.shape[0], dtype=bool), train=train)
         
         #agent pairs
         states_pair = np.concatenate(
