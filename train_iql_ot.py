@@ -69,7 +69,7 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 1337, "Random seed.")
+flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
@@ -248,7 +248,7 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        expectile=0.7,
+        expectile=0.8,
         temperature=3
     )
 
@@ -262,7 +262,7 @@ def main(_):
     ):
         if i >= FLAGS.num_pretraining_steps:
             
-            agent.expectile = 0.85
+            agent.expectile = 0.8
             #expert.preproc.enabled = False
             
             action = agent.sample_actions(
