@@ -121,29 +121,36 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         self.expert = rewards_expert
 
     def initialize_with_dataset(self, dataset: D4RLDataset, num_samples: int):
-
+        '''
+        num_samples: 10k 
+        '''
+        # Maybe problem here?
         assert self.capacity > num_samples
 
-        print("Taking dummy agent trajectories and computing OT rewards")
+        print("Initializing dataset with num_samples from agent dataset")
+        
+        # Take each trajectory and compute OT
         for i in range(num_samples - 1, len(dataset.observations)):
             if dataset.dones_float[i - 1] == 1.0:
                 self.observations[0:i] = dataset.observations[0:i]
+                self.next_observations[0:i] = dataset.next_observations[0:i]
                 self.actions[0:i] = dataset.actions[0:i]
                 self.masks[0:i] = dataset.masks[0:i]
                 self.dones_float[0:i] = dataset.dones_float[0:i]
-                self.next_observations[0:i] = dataset.next_observations[0:i]
+
                 # Replay buffer is empty at first iteration - cant warmup (sampling from empty buffer)
                 self.rewards[0:i] = self.expert.compute_rewards(
                     self.observations[0:i],
                     self.next_observations[0:i],
-                    self.dones_float[0:i],
+                    self.dones_float[0:i], # for all dones in agent dataset 
                 )
+                
                 self.insert_index = i
                 self.size = i
                 break
     
         self.scaler.init(self.rewards[: self.size])
-        self.rewards[: self.size] = self.scaler.scale(self.rewards[: self.size])
+        self.rewards[ :self.size] = self.scaler.scale(self.rewards[ :self.size])
         print(
             "rewards:",
             np.min(self.rewards[: self.size]),

@@ -40,7 +40,7 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "halfcheetah-random-v2", "Environment agent name.")
+flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment agent name.")
 flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -86,7 +86,7 @@ flags.DEFINE_integer("topk", default=20, help="Number of trajectories to use fro
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
-    Makes d4rl dataset from dummy agent and return its environment
+    Makes d4rl dataset from offline agent dataset and return its environment
     
     Args:
         env_name (str): Name of the agent environment
@@ -207,11 +207,9 @@ def evaluate(
 
 
 def main(_):
-    '''
-    Starting point
-    '''
-
+    
     print(f"Gym Version: {gym.__version__}")
+    
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
             save_dir=FLAGS.save_dir, seed=FLAGS.seed

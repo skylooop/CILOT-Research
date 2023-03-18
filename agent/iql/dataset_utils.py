@@ -112,12 +112,14 @@ class D4RLDataset(Dataset):
             )
         else:
             os.makedirs("tmp_data", exist_ok=True)
+            
             dataset = d4rl.qlearning_dataset(env)
             np.savez(
                 os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
                 **dataset,
             )
-            print("Saving D4RL dataset to tmp folder")
+            print("Saving D4RL dataset to tmp folder in current directory")
+            
         if clip_to_eps:
             lim = 1 - eps
             dataset["actions"] = np.clip(dataset["actions"], -lim, lim)
