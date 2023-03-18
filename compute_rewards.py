@@ -78,15 +78,11 @@ class RewardsExpert(ABC):
                 self.compute_rewards_one_episode(observations[i0 : i1 + 1], next_observations[i0 : i1 + 1])
             )
             i0 = i1 + 1
-
-        return np.concatenate(rewards)
+        
+        return np.concatenate(jax.device_get(rewards))
     
     @abstractmethod
     def warmup(self):
-        ...
-    
-    @abstractmethod
-    def pack_trajectory(self, trajectory):
         ...
 
     @abstractmethod
@@ -181,7 +177,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-        self.states_pair_buffer = ListBuffer(n=50)
+        self.states_pair_buffer = ListBuffer(n=20)
         
         self.encoder_class = encoder_class
         
@@ -192,6 +188,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
     def optim_embed(self) -> None:
         observations, next_observations, transport_matrix = self.states_pair_buffer.sample()
+        # fix to new implementation
         self.encoder_class, loss = uptade_encoder(self.encoder_class, observations, next_observations, self.expert_states_pair, transport_matrix)
         
     def warmup(self) -> None:
@@ -203,7 +200,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         '''
         # TODO: Add preprocessing function for trajectories and observations
         geom = pointcloud.PointCloud(batched_expert_trajs, agent_trajectory, epsilon=self.epsilon, cost_fn=self.cost_fn)
-        ot_prob = linear_problem.LinearProblem(geom, a=expert_trajs_weights, b=expert_trajs_weights, tau_a=0.95, tau_b=0.95)
+        ot_prob = linear_problem.LinearProblem(geom, a=expert_trajs_weights, b=agent_traj_weights, tau_a=0.95, tau_b=0.95)
         solver = sinkhorn.Sinkhorn()
 
         ot_sink = solver(ot_prob)
@@ -220,13 +217,19 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         return transport_costs
     
+    def aggregate_top_k(self, rewards, k=1):
+        """Aggregate rewards from batched (top) expert demonstrations by mean of top-K demos."""
+        scores = jnp.sum(rewards, axis=-1)
+        _, indices = jax.lax.top_k(scores, k=k)
+        return jnp.mean(rewards[indices], axis=0)
+    
     def compute_rewards_one_episode(
         self, observations_agent: np.ndarray, next_observations_agent: np.ndarray, train: bool = True
     ) -> np.ndarray:
         
         embeded_agent_observations, embeded_agent_next_observations = embed(self.encoder_class, observations_agent, next_observations_agent)
-        agent_traj_pairs = np.stack(np.concatenate(embeded_agent_observations, embeded_agent_next_observations), axis=-1)
-        agent_traj_weights = np.ones((observations_agent.shape[0], )) / 1000
+        agent_traj_pairs = jnp.stack(jnp.concatenate((embeded_agent_observations, embeded_agent_next_observations), axis=-1))
+        agent_traj_weights = jnp.ones((observations_agent.shape[0], )) / 1000
 
         # Experiment without Preprocessing
         #self.preproc.fit(agent_obs_pairs)
@@ -236,7 +239,10 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         rewards = self.compute_cross_domain_OT(self.batched_trajectories_pairs, self.expert_trajectory_weights, 
                                                agent_traj_pairs, agent_traj_weights)
-        return np.asarray(rewards)
+        rewards = self.aggregate_top_k(rewards, k=1)
+        
+        self.states_pair_buffer
+        return rewards
 
 
 def split_into_trajectories(
@@ -286,14 +292,17 @@ class OTRewardsExpertFactory:
             best_traj_paired_states = [
                 np.concatenate([transition[0], transition[-1]], axis=-1) for transition in cur_traj
             ]
-            # TODO: is it possible for trajectory of expert to be less than 1k? Maybe, bec 1k only for Gym
-            # maybe add padding if not gym env
+            # TODO: is it possible for trajectory of expert to be less than 1k? Maybe, bec 1k only for Gym, and can make <1k steps
+            # Add padding to 1k
             # same like in OTR, make 0 probability for padded with 0 states
             atoms = np.stack(best_traj_paired_states, axis=0) # equaivalent to pairs of (cur_state, next_state) in one trajectory
+            atoms = self._pad(atoms, max_sequence_length=1000)
             expert_pairs_states.append(atoms)
             
             num_weights = len(cur_traj)
-            expert_pairs_weights.append(np.ones((num_weights, ))) / 1000 # for gym
+            expert_pairs_weights_cur_traj = np.ones((num_weights, )) / 1000
+            expert_pairs_weights_cur_traj = self._pad(expert_pairs_weights_cur_traj, max_sequence_length=1000)
+            expert_pairs_weights.append(expert_pairs_weights_cur_traj) # for gym
             
         batched_expert_pairs_states = np.stack(expert_pairs_states) # shape: num of [num_best_trajectories x episode_length x (expert.obs_shape * 2)]
         expert_pairs_weights = np.stack(expert_pairs_weights) # [num_best_trajectories x episode_length]
@@ -309,7 +318,11 @@ class OTRewardsExpertFactory:
                     packed_trajectories=batched_expert_pairs_states
                 )
             )
-
+            
+    def _pad(self, x, max_sequence_length: int):
+        paddings = [(0, max_sequence_length - x.shape[0])]
+        paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
+        return np.pad(x, paddings, mode='constant', constant_values=0.)
 
 class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExpertCrossDomain
     

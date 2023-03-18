@@ -34,14 +34,7 @@ def embed(encoder: train_state.TrainState, obs, next_obs):
 @jax.jit
 def uptade_encoder(encoder: train_state.TrainState, obs, next_obs, expert_states_pair, transport_matrix):
     def cost_matrix_fn(states_pair, expert_states_pair):
-        dist = jnp.sqrt(jnp.sum(jnp.power(
-
-            states_pair[:, None]
-            - expert_states_pair[
-                None,
-            ]
-            , jnp.array(2)), axis=-1))
-
+        dist = jnp.sqrt(jnp.sum(jnp.power(states_pair[:, None] - expert_states_pair[None, ], jnp.array(2)), axis=-1))
         return dist
 
     def OT_loss(params):

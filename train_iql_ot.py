@@ -82,7 +82,7 @@ flags.DEFINE_integer(
     "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-flags.DEFINE_integer("topk", default=20, help="Number of trajectories to use from")
+flags.DEFINE_integer("topk", default=11, help="Number of trajectories to use from")
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
