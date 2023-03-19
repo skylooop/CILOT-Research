@@ -25,23 +25,23 @@ def create_encoder(agent_state_shape: int, expert_state_shape: int):
 
     return encoder_state
 
+@jax.jit
+def embed(encoder: train_state.TrainState, agent_observations, agent_next_observations):
+    return encoder.apply_fn(encoder.params, jnp.asarray(agent_observations)), encoder.apply_fn(encoder.params, jnp.asarray(agent_next_observations))
 
 @jax.jit
-def embed(encoder: train_state.TrainState, obs, next_obs):
-    return encoder.apply_fn(encoder.params, jnp.asarray(obs)), encoder.apply_fn(encoder.params, jnp.asarray(next_obs))
-
-
-@jax.jit
-def uptade_encoder(encoder: train_state.TrainState, obs, next_obs, expert_states_pair, transport_matrix):
-    def cost_matrix_fn(states_pair, expert_states_pair):
-        dist = jnp.sqrt(jnp.sum(jnp.power(states_pair[:, None] - expert_states_pair[None, ], jnp.array(2)), axis=-1))
-        return dist
+def update_encoder(encoder: train_state.TrainState, sampled_agent_observations, sampled_agent_next_observations,
+                   best_expert_traj_pairs, transport_matrix, cost_fn):
+    
+    #def cost_matrix_fn(states_pair, expert_states_pair):
+    #    dist = jnp.sqrt(jnp.sum(jnp.power(states_pair[:, None] - expert_states_pair[None, ], jnp.array(2)), axis=-1))
+    #    return dist
 
     def OT_loss(params):
-        embed_obs = encoder.apply_fn(params, obs)
-        next_embed_obs = encoder.apply_fn(params, next_obs)
-        states_pair = jnp.concatenate([embed_obs, next_embed_obs], axis=1)
-        cost_matrix = cost_matrix_fn(states_pair, expert_states_pair)
+        embeded_sampled_agent_observations = encoder.apply_fn(params, sampled_agent_observations)
+        embeded_sampled_agent_next_observations = encoder.apply_fn(params, sampled_agent_next_observations)
+        agent_embeded_states_pair = jnp.concatenate((embeded_sampled_agent_observations, embeded_sampled_agent_next_observations), axis=1)
+        cost_matrix = cost_fn.all_pairs(agent_embeded_states_pair, best_expert_traj_pairs)
         loss = jnp.sum(transport_matrix * cost_matrix)
 
         return loss
