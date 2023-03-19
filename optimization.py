@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from agent.iql.common import Model, MLP
 from absl import flags
 from flax.training import train_state
+import numpy as np
 
 FLAGS = flags.FLAGS
 
@@ -12,11 +13,11 @@ def create_encoder(agent_state_shape: int, expert_state_shape: int):
     
     rng = jax.random.PRNGKey(FLAGS.seed)
     rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
-    encoder = MLP((64, 64, expert_state_shape))
+    encoder = MLP((64, expert_state_shape))
     dummy = jax.random.normal(dummy_inp_rng, (1, agent_state_shape))
     params = encoder.init(model_rng, dummy, training=True)
 
-    optimizer = optax.adamw(learning_rate=3e-4)
+    optimizer = optax.adam(learning_rate=3e-4)
     encoder_state = train_state.TrainState.create(
         apply_fn=encoder.apply,
         tx=optimizer,
@@ -36,7 +37,7 @@ def update_encoder(encoder: train_state.TrainState, sampled_agent_observations, 
     #def cost_matrix_fn(states_pair, expert_states_pair):
     #    dist = jnp.sqrt(jnp.sum(jnp.power(states_pair[:, None] - expert_states_pair[None, ], jnp.array(2)), axis=-1))
     #    return dist
-
+    
     def OT_loss(params):
         embeded_sampled_agent_observations = encoder.apply_fn(params, sampled_agent_observations)
         embeded_sampled_agent_next_observations = encoder.apply_fn(params, sampled_agent_next_observations)

@@ -282,6 +282,8 @@ def main(_):
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
+        if i == 11000:
+            print('ent')
         expert.warmup()
 
         if i % FLAGS.log_interval == 0:

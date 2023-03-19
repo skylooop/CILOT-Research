@@ -124,7 +124,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         '''
         num_samples: 10k 
         '''
-        # Maybe problem here?
         assert self.capacity > num_samples
 
         print("Initializing dataset with num_samples from agent dataset")
@@ -185,7 +184,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
             self.masks[i0:i1] = np.stack(self.masks_cur)[: i1 - i0]
             self.dones_float[i0:i1] = np.stack(self.dones_float_cur)[: i1 - i0]
             self.next_observations[i0:i1] = next_obs[: i1 - i0]
-
             self.rewards[i0:i1] = self.scaler.scale(
                 self.expert.compute_rewards_one_episode(obs, next_obs, train=False)
             )[ :i1 - i0]

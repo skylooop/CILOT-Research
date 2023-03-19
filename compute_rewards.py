@@ -169,7 +169,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         epsilon: float = 1e-2,
     ):
     
-        self.episode_length_expert = 1000                                                        # topk=20                  1000
+        self.episode_length_expert = 1000                                                        # topk                  1000
         self.batched_trajectories_pairs = expert_data.packed_trajectories # shape: num of [num_best_trajectories=topk x traj_episode_length x (expert.obs_shape * 2)]
         self.expert_trajectory_weights = expert_data.expert_pairs_weights # [num_best_trajectories x episode_length]
         
@@ -193,7 +193,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         best_expert_traj_pairs = self.batched_trajectories_pairs[-1]
         self.encoder_class, loss = update_encoder(self.encoder_class, sampled_agent_observations, sampled_agent_next_observations,
                                                   best_expert_traj_pairs, transport_matrix, cost_fn=self.cost_fn)
-        #print(f"Optimal transport loss for encoder updates: {loss}")
         
     def warmup(self) -> None:
         self.optim_embed()
@@ -227,14 +226,21 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         _, indices = jax.lax.top_k(scores, k=k)
         return jnp.mean(rewards[indices], axis=0)
     
+    def _pad(self, x, max_sequence_length: int):
+        paddings = [(0, max_sequence_length - x.shape[0])]
+        paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
+        return np.pad(x, paddings, mode='constant', constant_values=0.)
+    
     def compute_rewards_one_episode(
         self, observations_agent: np.ndarray, next_observations_agent: np.ndarray, train: bool = True
     ) -> np.ndarray:
+        
         #one trajectory
         embeded_agent_observations, embeded_agent_next_observations = embed(self.encoder_class, observations_agent, next_observations_agent)
         
         agent_traj_pairs = jnp.stack(jnp.concatenate((embeded_agent_observations, embeded_agent_next_observations), axis=-1))
-        agent_traj_weights = jnp.ones((observations_agent.shape[0], )) / 1000
+        
+        agent_traj_weights = jnp.ones((agent_traj_pairs.shape[0], )) / 1000
 
         # Experiment without Preprocessing
         #self.preproc.fit(agent_obs_pairs)
@@ -245,6 +251,9 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         rewards, ot_sink_matrix = self.compute_cross_domain_OT(self.batched_trajectories_pairs, self.expert_trajectory_weights, 
                                                agent_traj_pairs, agent_traj_weights)
         rewards = self.aggregate_top_k(rewards, k=1)
+        rewards = self._pad(rewards, 1000)
+        
+        ####
         self.states_pair_buffer.append(
             (observations_agent, next_observations_agent, ot_sink_matrix)
         )
