@@ -1,6 +1,6 @@
 import os
 
-#os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 from typing import Tuple, Union
@@ -77,7 +77,7 @@ flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 10000, "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 170000, "Replay buffer size (=max_steps if unspecified)."
 )
