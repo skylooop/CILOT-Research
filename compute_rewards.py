@@ -177,7 +177,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         self.epsilon = epsilon
 
         self.preproc = Preprocessor()
-        self.states_pair_buffer = ListBuffer(n=20)
+        self.states_pair_buffer = ListBuffer(n=10)
         
         self.encoder_class = encoder_class
         

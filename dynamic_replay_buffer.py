@@ -188,7 +188,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
             self.rewards[i0:i1] = self.scaler.scale(
                 self.expert.compute_rewards_one_episode(obs, next_obs, train=False)
-            )[: i1 - i0]
+            )[ :i1 - i0]
 
             self.insert_index = i1 % self.capacity
             self.size = min(self.size + (i1 - i0), self.capacity)

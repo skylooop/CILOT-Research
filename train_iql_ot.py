@@ -1,6 +1,6 @@
 import os
 
-#os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+#os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 from typing import Tuple, Union
@@ -43,7 +43,7 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "halfcheetah-medium-v2", "Environment agent name.")
+flags.DEFINE_string("env_name", "halfcheetah-random-v2", "Environment agent name.")
 flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -71,7 +71,7 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 1, "Random seed.")
+flags.DEFINE_integer("seed", 20, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
@@ -164,7 +164,8 @@ def evaluate(
 ):
     os.makedirs(FLAGS.save_dir +"/video", exist_ok=True)
     stats = {"return": [], "length": []}
-
+    
+    # UNCOMMENT ALL VARS WITH VIDEO TO SAVE VIDEO
     video = VideoRecorder(FLAGS.save_dir, fps=20)
     env.reset()
     video.init(enabled=True)
