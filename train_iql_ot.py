@@ -1,10 +1,13 @@
 import os
+
+#os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+
 from typing import Tuple, Union
 import gym
 import numpy as np
 import tqdm
 
-import flax.linen as nn
 from absl import app, flags
 
 import wandb

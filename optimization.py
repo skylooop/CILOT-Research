@@ -42,7 +42,7 @@ def update_encoder(encoder: train_state.TrainState, sampled_agent_observations, 
         embeded_sampled_agent_next_observations = encoder.apply_fn(params, sampled_agent_next_observations)
         agent_embeded_states_pair = jnp.concatenate((embeded_sampled_agent_observations, embeded_sampled_agent_next_observations), axis=1)
         cost_matrix = cost_fn.all_pairs(agent_embeded_states_pair, best_expert_traj_pairs)
-        loss = jnp.sum(transport_matrix * cost_matrix)
+        loss = jnp.sum(jax.vmap(lambda x, y: jnp.multiply(x, y), in_axes=(0, None))(transport_matrix, cost_matrix))
 
         return loss
 

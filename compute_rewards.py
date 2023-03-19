@@ -193,7 +193,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         best_expert_traj_pairs = self.batched_trajectories_pairs[-1]
         self.encoder_class, loss = update_encoder(self.encoder_class, sampled_agent_observations, sampled_agent_next_observations,
                                                   best_expert_traj_pairs, transport_matrix, cost_fn=self.cost_fn)
-        print(f"Optimal transport loss for encoder updates: {loss}")
+        #print(f"Optimal transport loss for encoder updates: {loss}")
         
     def warmup(self) -> None:
         self.optim_embed()
@@ -211,15 +211,15 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
 
         pseudo_rewards = -transp_cost
-        return pseudo_rewards, ot_sink
+        return pseudo_rewards, ot_sink.matrix
         
     def compute_cross_domain_OT(self, batched_expert_trajs, expert_trajs_weights,
                                       agent_trajectory, agent_traj_weights):
         
-        transport_costs, ot_sink = self.vectorized_ot_rewards(batched_expert_trajs, expert_trajs_weights,
+        transport_costs, ot_sink_matrix = self.vectorized_ot_rewards(batched_expert_trajs, expert_trajs_weights,
                                                agent_trajectory, agent_traj_weights)
         
-        return transport_costs, ot_sink
+        return transport_costs, ot_sink_matrix
     
     def aggregate_top_k(self, rewards, k=1):
         """Aggregate rewards from batched (top) expert demonstrations by mean of top-K demos."""
@@ -242,11 +242,11 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         #x = jnp.asarray(self.preproc.transform(agent_obs_pairs))
         #y = jnp.asarray(self.preproc.transform(self.expert_states_pair))
         
-        rewards, ot_sink = self.compute_cross_domain_OT(self.batched_trajectories_pairs, self.expert_trajectory_weights, 
+        rewards, ot_sink_matrix = self.compute_cross_domain_OT(self.batched_trajectories_pairs, self.expert_trajectory_weights, 
                                                agent_traj_pairs, agent_traj_weights)
         rewards = self.aggregate_top_k(rewards, k=1)
         self.states_pair_buffer.append(
-            (observations_agent, next_observations_agent, ot_sink.matrix)
+            (observations_agent, next_observations_agent, ot_sink_matrix)
         )
         return rewards
 
