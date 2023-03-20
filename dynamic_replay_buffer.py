@@ -142,7 +142,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                     self.observations[0:i],
                     self.next_observations[0:i],
                     self.dones_float[0:i], # for all dones in agent dataset 
-                )[0:i] # zaglushka because of padding, but buffer doesnt know about this
+                )#[0:i] # zaglushka because of padding, but buffer doesnt know about this
                 
                 self.insert_index = i
                 self.size = i

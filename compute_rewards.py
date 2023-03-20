@@ -207,7 +207,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         solver = sinkhorn.Sinkhorn()
 
         ot_sink = solver(ot_prob)
-        transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=1)
+        transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=0)
 
         pseudo_rewards = -transp_cost
         return pseudo_rewards, ot_sink.matrix
@@ -237,10 +237,9 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         #one trajectory
         embeded_agent_observations, embeded_agent_next_observations = embed(self.encoder_class, observations_agent, next_observations_agent)
-        
         agent_traj_pairs = jnp.stack(jnp.concatenate((embeded_agent_observations, embeded_agent_next_observations), axis=-1))
         
-        agent_traj_weights = jnp.ones((agent_traj_pairs.shape[0], )) / 1000
+        agent_traj_weights = jnp.ones((agent_traj_pairs.shape[0], )) / agent_traj_pairs.shape[0]
 
         # Experiment without Preprocessing
         #self.preproc.fit(agent_obs_pairs)
@@ -251,8 +250,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         rewards, ot_sink_matrix = self.compute_cross_domain_OT(self.batched_trajectories_pairs, self.expert_trajectory_weights, 
                                                agent_traj_pairs, agent_traj_weights)
         rewards = self.aggregate_top_k(rewards, k=1)
-        rewards = self._pad(rewards, 1000)
-        
         ####
         self.states_pair_buffer.append(
             (observations_agent, next_observations_agent, ot_sink_matrix)
@@ -315,7 +312,7 @@ class OTRewardsExpertFactory:
             expert_pairs_states.append(atoms)
             
             num_weights = len(cur_traj)
-            expert_pairs_weights_cur_traj = np.ones((num_weights, )) / 1000
+            expert_pairs_weights_cur_traj = np.ones((num_weights, )) / 999
             expert_pairs_weights_cur_traj = self._pad(expert_pairs_weights_cur_traj, max_sequence_length=999)
             expert_pairs_weights.append(expert_pairs_weights_cur_traj) # for gym
             
