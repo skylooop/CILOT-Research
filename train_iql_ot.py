@@ -43,7 +43,7 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "halfcheetah-random-v2", "Environment agent name.")
+flags.DEFINE_string("env_name", "walker2d-random-v2", "Environment agent name.")
 flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
@@ -71,21 +71,21 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 20, "Random seed.")
+flags.DEFINE_integer("seed", 30, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
-flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
+flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 10000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
 flags.DEFINE_integer(
-    "replay_buffer_size", 170000, "Replay buffer size (=max_steps if unspecified)."
+    "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 140000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 170000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-flags.DEFINE_integer("topk", default=11, help="Number of trajectories to use from")
+flags.DEFINE_integer("topk", default=16, help="Number of trajectories to use from")
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -152,7 +152,7 @@ def update_buffer(
         else:
             for k, v in info["episode"].items():
                 wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])
-    return next_observation, reward ####
+    return next_observation, reward
 
 
 def evaluate(
