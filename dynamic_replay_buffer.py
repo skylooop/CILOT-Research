@@ -137,12 +137,11 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                 self.masks[0:i] = dataset.masks[0:i]
                 self.dones_float[0:i] = dataset.dones_float[0:i]
 
-                # Replay buffer is empty at first iteration - cant warmup (sampling from empty buffer)
                 self.rewards[0:i] = self.expert.compute_rewards(
                     self.observations[0:i],
                     self.next_observations[0:i],
                     self.dones_float[0:i], # for all dones in agent dataset 
-                )#[0:i] # zaglushka because of padding, but buffer doesnt know about this
+                )
                 
                 self.insert_index = i
                 self.size = i

@@ -6,6 +6,7 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 from typing import Tuple, Union
 import gym
 import numpy as np
+import dmc2gym
 import tqdm
 
 from absl import app, flags
@@ -43,8 +44,9 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_string("env_name", "walker2d-random-v2", "Environment agent name.")
-flags.DEFINE_string("expert_env_name", "hopper-expert-v2", "Environment expert name.")
+flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
+flags.DEFINE_string("env_name", "walker2d-random-v2", help="Environment agent name.")
+flags.DEFINE_string("expert_env_name", "hopper-expert-v2", help="Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum("logger", "Tensorboard", ["Wandb", "Tensorboard"], help="define loggers")
@@ -114,9 +116,18 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
 
 def make_expert(agent_state_shape: int) -> OTRewardsExpert:
     """
-    dataset - expert dataset
+    Building expert trajectories dataset
     """
-    expert_env = gym.make(FLAGS.expert_env_name)
+    if FLAGS.dmc_env:
+        domain_name = FLAGS.expert_env_name.split("_")[0]
+        task_name = '_'.join(FLAGS.expert_env_name.split('_')[1:])
+        
+        expert_env = dmc2gym.make(domain_name=domain_name,
+                                  task_name=task_name,
+                                  visualize_reward=False)
+    else:
+        expert_env = gym.make(FLAGS.expert_env_name)
+        
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
     
