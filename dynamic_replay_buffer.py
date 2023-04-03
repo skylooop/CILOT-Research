@@ -121,9 +121,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         self.expert = rewards_expert
 
     def initialize_with_dataset(self, dataset: D4RLDataset, num_samples: int):
-        '''
-        num_samples: 10k 
-        '''
         assert self.capacity > num_samples
 
         print("Initializing dataset with num_samples from agent dataset")
@@ -140,7 +137,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
                 self.rewards[0:i] = self.expert.compute_rewards(
                     self.observations[0:i],
                     self.next_observations[0:i],
-                    self.dones_float[0:i], # for all dones in agent dataset 
+                    self.dones_float[0:i],
                 )
                 
                 self.insert_index = i

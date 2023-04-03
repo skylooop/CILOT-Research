@@ -106,7 +106,7 @@ class D4RLDataset(Dataset):
     def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
         if env.spec.id == "dmc_cartpole_swingup_1-v1": #currently works with cartpole swingup
             dataset = dict(np.load("/home/m_bobrin/CILOT-Research/dataAgg/expert_trajectory_cartpole_swingup.npz"))
-            dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1))
+            dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1)) # just dummy zeros
             
         # add dummy trajectories of agent
         #if env.spec.id == "dmc_cartpole_balance_1-v1":

@@ -73,6 +73,7 @@ class RewardsExpert(ABC):
         i0 = 0
         rewards = []
 
+        # number of terminal states in agent dataset
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
             rewards.append(
                 self.compute_rewards_one_episode(observations[i0 : i1 + 1], next_observations[i0 : i1 + 1])

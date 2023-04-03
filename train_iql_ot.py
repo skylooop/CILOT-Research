@@ -1,6 +1,6 @@
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3, 2"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 from typing import Tuple, Union
@@ -46,14 +46,14 @@ FLAGS = flags.FLAGS
 # Choose agent/expert datasets
 flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
 flags.DEFINE_string("env_name", "walker2d-random-v2", help="Environment agent name.")
-flags.DEFINE_string("expert_env_name", "hopper-expert-v2", help="Environment expert name.")
+flags.DEFINE_string("expert_env_name", "halfcheetah-medium-replay-v2", help="Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
-flags.DEFINE_enum("logger", "Tensorboard", ["Wandb", "Tensorboard"], help="define loggers")
+flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
 
 # Wandb params
 flags.DEFINE_string("wandb_project_name", "CILOT", help="Current run name")
-flags.DEFINE_string("wandb_entity", "cilot", help="Team name.")
+flags.DEFINE_string("wandb_entity", default=None, help="Team name.")
 flags.DEFINE_string("wandb_job_type", "training", help="Set job type.")
 
 flags.DEFINE_string(
@@ -78,7 +78,7 @@ flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluatio
 flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
-flags.DEFINE_integer("max_steps", int(3e6), "Number of training steps.")
+flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
 flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
@@ -87,7 +87,7 @@ flags.DEFINE_integer(
     "init_dataset_size", 170000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-flags.DEFINE_integer("topk", default=16, help="Number of trajectories to use from")
+flags.DEFINE_integer("topk", default=15, help="Number of trajectories to use from")
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -176,7 +176,6 @@ def evaluate(
     os.makedirs(FLAGS.save_dir +"/video", exist_ok=True)
     stats = {"return": [], "length": []}
     
-    # UNCOMMENT ALL VARS WITH VIDEO TO SAVE VIDEO
     video = VideoRecorder(FLAGS.save_dir, fps=20)
     env.reset()
     video.init(enabled=True)
@@ -220,7 +219,6 @@ def evaluate(
         for k, v in stats.items():
             wandb.log({f"Evaluation/average_{k}s": v}, step=step)
 
-
 def main(_):
     
     print(f"Gym Version: {gym.__version__}")
@@ -237,7 +235,7 @@ def main(_):
             save_dir=FLAGS.save_dir,
             seed=FLAGS.seed,
             wandb_project_name=FLAGS.wandb_project_name,
-            wandb_entity=FLAGS.wandb_entity,
+            wandb_entity=None, # change to org
             wandb_job_type=FLAGS.wandb_job_type,
         )
         logger = "Wandb"
@@ -290,11 +288,8 @@ def main(_):
                 observation, action, replay_buffer, env, summary_writer
             )
 
-
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
-        if i == 11000:
-            print('ent')
         expert.warmup()
 
         if i % FLAGS.log_interval == 0:
