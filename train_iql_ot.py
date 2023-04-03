@@ -44,9 +44,9 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
-flags.DEFINE_string("env_name", "walker2d-random-v2", help="Environment agent name.")
-flags.DEFINE_string("expert_env_name", "halfcheetah-medium-replay-v2", help="Environment expert name.")
+flags.DEFINE_bool("dmc_env", default=True, help="Whether DMC env is used.")
+flags.DEFINE_string("env_name", "cartpole_balance", help="Environment agent name.")
+flags.DEFINE_string("expert_env_name", "cartpole_swingup", help="Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
@@ -100,7 +100,14 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     Returns:
         Tuple[gym.Env, D4RLDataset]
     """
-    env = gym.make(env_name)
+    if FLAGS.dmc_env:
+        domain_name = FLAGS.env_name.split("_")[0]
+        task_name = '_'.join(FLAGS.env_name.split('_')[1:])
+        env = dmc2gym.make(domain_name=domain_name,
+                                  task_name=task_name,
+                                  visualize_reward=False)
+    else: 
+        env = gym.make(env_name)
 
     env = EpisodeMonitor(env)
     env = SinglePrecision(env)
@@ -263,7 +270,7 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         max_steps=FLAGS.max_steps,
-        expectile=0.8, #same as in OTR paper
+        expectile=0.8,
         temperature=3
     )
 

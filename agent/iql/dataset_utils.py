@@ -104,27 +104,31 @@ class Dataset:
 
 class D4RLDataset(Dataset):
     def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
+        
         if env.spec.id == "dmc_cartpole_swingup_1-v1": #currently works with cartpole swingup
             dataset = dict(np.load("/home/m_bobrin/CILOT-Research/dataAgg/expert_trajectory_cartpole_swingup.npz"))
             dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1)) # just dummy zeros
+        
+        if env.spec.id == "dmc_cartpole_balance_1-v1":
+            dataset = dict(np.load("/home/m_bobrin/CILOT-Research/research/agent_cartpole_balance.npz"))
             
-        # add dummy trajectories of agent
-        #if env.spec.id == "dmc_cartpole_balance_1-v1":
-        if os.path.isfile(os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")):
-            dataset = dict(
-                np.load(
-                    os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
+        if env.spec.id.split("_")[0] != "dmc":
+            if os.path.isfile(os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")):
+                dataset = dict(
+                    np.load(
+                        os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
+                    )
                 )
-            )
         else:
             os.makedirs("tmp_data", exist_ok=True)
             
-            dataset = d4rl.qlearning_dataset(env)
-            np.savez(
-                os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
-                **dataset,
-            )
-            print("Saving D4RL dataset to tmp folder in current directory")
+            if not FLAGS.dmc_env: 
+                dataset = d4rl.qlearning_dataset(env)
+                np.savez(
+                    os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
+                    **dataset,
+                )
+                print("Saving D4RL dataset to tmp folder in current directory")
             
         if clip_to_eps:
             lim = 1 - eps

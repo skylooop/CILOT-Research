@@ -333,6 +333,8 @@ class OTRewardsExpertFactory:
             )
             
     def _pad(self, x, max_sequence_length: int):
+        if x.shape[0] >= 999:
+            return x
         paddings = [(0, max_sequence_length - x.shape[0])]
         paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
         return np.pad(x, paddings, mode='constant', constant_values=0.)
