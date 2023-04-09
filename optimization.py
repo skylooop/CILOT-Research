@@ -35,23 +35,29 @@ def fourier_features(input, mapping_size: int = 256):
     
 @jax.jit
 def embed(encoder: train_state.TrainState, agent_observations, agent_next_observations):
-    return encoder.apply_fn(encoder.params, fourier_features(jnp.asarray(agent_observations))), encoder.apply_fn(encoder.params, fourier_features(jnp.asarray(agent_next_observations)))
+    return encoder.apply_fn(encoder.params, fourier_features(jnp.asarray(agent_observations))), \
+        encoder.apply_fn(encoder.params, fourier_features(jnp.asarray(agent_next_observations)))
 
 @jax.jit
 def update_encoder(encoder: train_state.TrainState, sampled_agent_observations, sampled_agent_next_observations,
                    best_expert_traj_pairs, transport_matrix, cost_fn):
     
+    def cross_attention(agent_embeded_states_pair, best_expert_traj_pairs):
+        #vmap over batch of embeded expert trajs
+        pass
+    
     def OT_loss(params):
         embeded_sampled_agent_observations = encoder.apply_fn(params, fourier_features(sampled_agent_observations))
-        embeded_sampled_agent_next_observations = (encoder.apply_fn(params, fourier_features(sampled_agent_next_observations)))
+        embeded_sampled_agent_next_observations = encoder.apply_fn(params, fourier_features(sampled_agent_next_observations))
         
         agent_embeded_states_pair = jnp.concatenate((embeded_sampled_agent_observations, embeded_sampled_agent_next_observations), axis=1)
         cost_matrix = cost_fn.all_pairs(best_expert_traj_pairs, agent_embeded_states_pair)
+        # sum over all batch of best trajectories
         loss = jnp.sum(jax.vmap(lambda x, y: jnp.multiply(x, y), in_axes=(0, None))(transport_matrix, cost_matrix))
 
         return loss
 
-    gradient_fn = jax.value_and_grad(OT_loss)
+    gradient_fn = jax.value_and_grad(OT_loss, has_aux=False)
     loss, grads = gradient_fn(encoder.params)
     new_encoder = encoder.apply_gradients(grads=grads)
 

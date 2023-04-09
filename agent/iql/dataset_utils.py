@@ -116,10 +116,11 @@ class D4RLDataset(Dataset):
                     dataset['observations'] = np.asarray(dataset.pop("obs"))
                     dataset['next_observations'] = np.asarray(dataset.pop('nobs'))
                     dataset['rewards'] = np.asarray(dataset.pop('reward'))
-    
-            # We are not using actions at all 
+
             if env.spec.id == "dmc_cartpole_balance_1-v1":
                 dataset = dict(np.load("/home/m_bobrin/CILOT-Research/research/agent_cartpole_balance.npz"))
+            
+            # We are not using actions
             dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1))
             dataset['masks'] = np.zeros_like(dataset['observations'])
         else:

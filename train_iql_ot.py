@@ -61,6 +61,11 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_boolean(
+    "use_fourier_features",
+    default=False,
+    help="Whether to use Fourier Features mapping before passing to encoder."
+)
+flags.DEFINE_boolean(
     "use_embedding_agent_pairs",
     default=False,
     help="Whether to use embedding for agent states.",
@@ -79,7 +84,7 @@ flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 100000, "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
 )
