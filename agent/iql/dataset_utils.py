@@ -11,6 +11,7 @@ import gym
 import numpy as np
 from tqdm import tqdm
 import os
+import pickle
 
 from absl import flags
 
@@ -33,7 +34,7 @@ def split_into_trajectories(
                 observations[i],
                 actions[i],
                 rewards[i],
-                masks[i],
+                #masks[i],
                 dones_float[i],
                 next_observations[i],
             )
@@ -48,7 +49,7 @@ def merge_trajectories(trajs):
     observations = []
     actions = []
     rewards = []
-    masks = []
+    #masks = []
     dones_float = []
     next_observations = []
 
@@ -57,7 +58,7 @@ def merge_trajectories(trajs):
             observations.append(obs)
             actions.append(act)
             rewards.append(rew)
-            masks.append(mask)
+            #masks.append(mask)
             dones_float.append(done)
             next_observations.append(next_obs)
 
@@ -65,7 +66,7 @@ def merge_trajectories(trajs):
         np.stack(observations),
         np.stack(actions),
         np.stack(rewards),
-        np.stack(masks),
+        #np.stack(masks),
         np.stack(dones_float),
         np.stack(next_observations),
     )
@@ -77,7 +78,7 @@ class Dataset:
         observations: np.ndarray,
         actions: np.ndarray,
         rewards: np.ndarray,
-        masks: np.ndarray,
+        #masks: np.ndarray,
         dones_float: np.ndarray,
         next_observations: np.ndarray,
         size: int,
@@ -86,7 +87,7 @@ class Dataset:
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
-        self.masks = masks
+        #self.masks = masks
         self.dones_float = dones_float
         self.next_observations = next_observations
         self.size = size
@@ -97,7 +98,7 @@ class Dataset:
             observations=self.observations[indx],
             actions=self.actions[indx],
             rewards=self.rewards[indx],
-            masks=self.masks[indx],
+            #masks=self.masks[indx],
             next_observations=self.next_observations[indx],
         )
 
@@ -105,30 +106,38 @@ class Dataset:
 class D4RLDataset(Dataset):
     def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
         
-        if env.spec.id == "dmc_cartpole_swingup_1-v1": #currently works with cartpole swingup
-            dataset = dict(np.load("/home/m_bobrin/CILOT-Research/dataAgg/expert_trajectory_cartpole_swingup.npz"))
-            dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1)) # just dummy zeros
-        
-        if env.spec.id == "dmc_cartpole_balance_1-v1":
-            dataset = dict(np.load("/home/m_bobrin/CILOT-Research/research/agent_cartpole_balance.npz"))
-            
-        if env.spec.id.split("_")[0] != "dmc":
+        if env.spec.id.split("_")[0] == "dmc":
+            if env.spec.id == "dmc_cartpole_swingup_1-v1":
+                dataset = dict(np.load("dmc_rollouts/cartpole/expert_trajectory_cartpole_swingup.npz"))
+                print(dataset['observations'].shape)
+            if env.spec.id == "dmc_pendulum_swingup_1-v1":
+                with open("dmc_rollouts/pendulum/expert_trajectory_pendulum_swingup.pickle",'rb') as handle:
+                    dataset = pickle.load(handle)
+                    dataset['observations'] = np.asarray(dataset.pop("obs"))
+                    dataset['next_observations'] = np.asarray(dataset.pop('nobs'))
+                    dataset['rewards'] = np.asarray(dataset.pop('reward'))
+    
+            # We are not using actions at all 
+            if env.spec.id == "dmc_cartpole_balance_1-v1":
+                dataset = dict(np.load("/home/m_bobrin/CILOT-Research/research/agent_cartpole_balance.npz"))
+            dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1))
+            dataset['masks'] = np.zeros_like(dataset['observations'])
+        else:
             if os.path.isfile(os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")):
                 dataset = dict(
                     np.load(
                         os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
                     )
                 )
-        else:
-            os.makedirs("tmp_data", exist_ok=True)
-            
-            if not FLAGS.dmc_env: 
-                dataset = d4rl.qlearning_dataset(env)
-                np.savez(
-                    os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
-                    **dataset,
-                )
-                print("Saving D4RL dataset to tmp folder in current directory")
+        os.makedirs("tmp_data", exist_ok=True)
+        
+        if not FLAGS.dmc_env: 
+            dataset = d4rl.qlearning_dataset(env)
+            np.savez(
+                os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
+                **dataset,
+            )
+            print("Saving D4RL dataset to tmp folder in current directory")
             
         if clip_to_eps:
             lim = 1 - eps
@@ -137,7 +146,7 @@ class D4RLDataset(Dataset):
         dones_float = np.zeros_like(dataset["rewards"])
         
         for i in range(len(dones_float) - 1):
-            if (np.linalg.norm(dataset["observations"][i + 1] - dataset["next_observations"][i]) > 1e-6 or dataset["terminals"][i] == 1.0):
+            if (np.linalg.norm(dataset["observations"][i + 1] - dataset["next_observations"][i]) > 1e-6): #or dataset["terminals"][i] == 1.0):
                 dones_float[i] = 1
             else:
                 dones_float[i] = 0
@@ -148,7 +157,7 @@ class D4RLDataset(Dataset):
             dataset["observations"].astype(np.float32),
             actions=dataset["actions"].astype(np.float32),
             rewards=dataset["rewards"].astype(np.float32),
-            masks=1.0 - dataset["terminals"].astype(np.float32),
+            #masks=1.0 - dataset["terminals"].astype(np.float32),
             dones_float=dones_float.astype(np.float32),
             next_observations=dataset["next_observations"].astype(np.float32),
             size=len(dataset["observations"]),
@@ -165,7 +174,7 @@ class ReplayBuffer(Dataset):
         )
         actions = np.empty((capacity, action_dim), dtype=np.float32)
         rewards = np.empty((capacity,), dtype=np.float32)
-        masks = np.empty((capacity,), dtype=np.float32)
+        #masks = np.empty((capacity,), dtype=np.float32)
         dones_float = np.empty((capacity,), dtype=np.float32)
         next_observations = np.empty(
             (capacity, *observation_space.shape), dtype=observation_space.dtype
@@ -174,7 +183,7 @@ class ReplayBuffer(Dataset):
             observations=observations,
             actions=actions,
             rewards=rewards,
-            masks=masks,
+            #masks=masks,
             dones_float=dones_float,
             next_observations=next_observations,
             size=0,
@@ -212,7 +221,7 @@ class ReplayBuffer(Dataset):
         self.observations[:num_samples] = dataset.observations[indices]
         self.actions[:num_samples] = dataset.actions[indices]
         self.rewards[:num_samples] = dataset.rewards[indices]
-        self.masks[:num_samples] = dataset.masks[indices]
+        #self.masks[:num_samples] = dataset.masks[indices]
         self.dones_float[:num_samples] = dataset.dones_float[indices]
         self.next_observations[:num_samples] = dataset.next_observations[indices]
 
@@ -231,7 +240,7 @@ class ReplayBuffer(Dataset):
         self.observations[self.insert_index] = observation
         self.actions[self.insert_index] = action
         self.rewards[self.insert_index] = reward
-        self.masks[self.insert_index] = mask
+        #self.masks[self.insert_index] = mask
         self.dones_float[self.insert_index] = done_float
         self.next_observations[self.insert_index] = next_observation
 
@@ -256,7 +265,7 @@ class OTReplayBuffer(ReplayBuffer):
 
         self.observations_cur = []
         self.actions_cur = []
-        self.masks_cur = []
+        #self.masks_cur = []
         self.dones_float_cur = []
         self.next_observations_cur = []
 
@@ -279,7 +288,7 @@ class OTReplayBuffer(ReplayBuffer):
 
                 self.observations[i0:i1] = dataset.observations[i0:i1]
                 self.actions[i0:i1] = dataset.actions[i0:i1]
-                self.masks[i0:i1] = dataset.masks[i0:i1]
+                #self.masks[i0:i1] = dataset.masks[i0:i1]
                 self.dones_float[i0:i1] = dataset.dones_float[i0:i1]
                 self.next_observations[i0:i1] = dataset.next_observations[i0:i1]
 
@@ -316,7 +325,7 @@ class OTReplayBuffer(ReplayBuffer):
 
         self.observations_cur.append(observation)
         self.actions_cur.append(action)
-        self.masks_cur.append(mask)
+        #self.masks_cur.append(mask)
         self.dones_float_cur.append(done_float)
         self.next_observations_cur.append(next_observation)
 
@@ -327,7 +336,7 @@ class OTReplayBuffer(ReplayBuffer):
 
             self.observations[i0:i1] = np.stack(self.observations_cur)[: i1 - i0]
             self.actions[i0:i1] = np.stack(self.actions_cur)[: i1 - i0]
-            self.masks[i0:i1] = np.stack(self.masks_cur)[: i1 - i0]
+            #self.masks[i0:i1] = np.stack(self.masks_cur)[: i1 - i0]
             self.dones_float[i0:i1] = np.stack(self.dones_float_cur)[: i1 - i0]
             self.next_observations[i0:i1] = np.stack(self.next_observations_cur)[
                 : i1 - i0
@@ -345,6 +354,6 @@ class OTReplayBuffer(ReplayBuffer):
 
             self.observations_cur = []
             self.actions_cur = []
-            self.masks_cur = []
+            #self.masks_cur = []
             self.dones_float_cur = []
             self.next_observations_cur = []

@@ -9,7 +9,7 @@ from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import RewardsScaler, RewardsExpert
 
 Batch = collections.namedtuple(
-    "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
+    "Batch", ["observations", "actions", "rewards", "next_observations"]
 )
 
 
@@ -19,7 +19,7 @@ class Dataset(object):
         observations: np.ndarray,
         actions: np.ndarray,
         rewards: np.ndarray,
-        masks: np.ndarray,
+        #masks: np.ndarray,
         dones_float: np.ndarray,
         next_observations: np.ndarray,
         size: int,
@@ -27,7 +27,7 @@ class Dataset(object):
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
-        self.masks = masks
+        #self.masks = masks
         self.dones_float = dones_float
         self.next_observations = next_observations
         self.size = size
@@ -38,7 +38,7 @@ class Dataset(object):
             observations=self.observations[indx],
             actions=self.actions[indx],
             rewards=self.rewards[indx],
-            masks=self.masks[indx],
+            #masks=self.masks[indx],
             next_observations=self.next_observations[indx],
         )
 
@@ -53,7 +53,7 @@ class ReplayBuffer(Dataset):
         )
         actions = np.empty((capacity, action_dim), dtype=np.float32)
         rewards = np.empty((capacity,), dtype=np.float32)
-        masks = np.empty((capacity,), dtype=np.float32)
+        #masks = np.empty((capacity,), dtype=np.float32)
         dones_float = np.empty((capacity,), dtype=np.float32)
         next_observations = np.empty(
             (capacity, *observation_space.shape), dtype=observation_space.dtype
@@ -63,7 +63,7 @@ class ReplayBuffer(Dataset):
             observations=observations,
             actions=actions,
             rewards=rewards,
-            masks=masks,
+            #masks=masks,
             dones_float=dones_float,
             next_observations=next_observations,
             size=0,
@@ -86,7 +86,7 @@ class ReplayBuffer(Dataset):
         self.observations[self.insert_index] = observation
         self.actions[self.insert_index] = action
         self.rewards[self.insert_index] = reward
-        self.masks[self.insert_index] = mask
+        #self.masks[self.insert_index] = mask
         self.dones_float[self.insert_index] = done_float
         self.next_observations[self.insert_index] = next_observation
 
@@ -113,7 +113,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
         self.observations_cur = []
         self.actions_cur = []
-        self.masks_cur = []
+        #self.masks_cur = []
         self.dones_float_cur = []
         self.next_observations_cur = []
 
@@ -126,12 +126,12 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         print("Initializing dataset with num_samples from agent dataset")
         
         # Take each trajectory and compute OT
-        for i in range(num_samples - 1, len(dataset.observations)):
+        for i in range(num_samples + 1, len(dataset.observations)):
             if dataset.dones_float[i - 1] == 1.0:
                 self.observations[0:i] = dataset.observations[0:i]
                 self.next_observations[0:i] = dataset.next_observations[0:i]
                 self.actions[0:i] = dataset.actions[0:i]
-                self.masks[0:i] = dataset.masks[0:i]
+                #self.masks[0:i] = dataset.masks[0:i]
                 self.dones_float[0:i] = dataset.dones_float[0:i]
 
                 self.rewards[0:i] = self.expert.compute_rewards(
@@ -164,7 +164,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
         self.observations_cur.append(observation)
         self.actions_cur.append(action)
-        self.masks_cur.append(mask)
+        #self.masks_cur.append(mask)
         self.dones_float_cur.append(done_float)
         self.next_observations_cur.append(next_observation)
 
@@ -177,7 +177,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
             self.observations[i0:i1] = obs[: i1 - i0]
             self.actions[i0:i1] = np.stack(self.actions_cur)[: i1 - i0]
-            self.masks[i0:i1] = np.stack(self.masks_cur)[: i1 - i0]
+            #self.masks[i0:i1] = np.stack(self.masks_cur)[: i1 - i0]
             self.dones_float[i0:i1] = np.stack(self.dones_float_cur)[: i1 - i0]
             self.next_observations[i0:i1] = next_obs[: i1 - i0]
             self.rewards[i0:i1] = self.scaler.scale(
@@ -189,6 +189,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
             self.observations_cur = []
             self.actions_cur = []
-            self.masks_cur = []
+            #self.masks_cur = []
             self.dones_float_cur = []
             self.next_observations_cur = []

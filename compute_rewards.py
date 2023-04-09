@@ -259,7 +259,7 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
 
 
 def split_into_trajectories(
-    observations, actions, rewards, masks, dones_float, next_observations
+    observations, actions, rewards, dones_float, next_observations
 ):
     trajs = [[]]
 
@@ -270,7 +270,7 @@ def split_into_trajectories(
                 observations[i],
                 actions[i],
                 rewards[i],
-                masks[i],
+                #masks[i],
                 dones_float[i],
                 next_observations[i],
             )
@@ -287,7 +287,7 @@ class OTRewardsExpertFactory:
             dataset.observations,
             dataset.actions,
             dataset.rewards,
-            dataset.masks,
+            #dataset.masks,
             dataset.dones_float,
             dataset.next_observations,
         )
@@ -339,7 +339,7 @@ class OTRewardsExpertFactory:
         paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
         return np.pad(x, paddings, mode='constant', constant_values=0.)
 
-class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExpertCrossDomain
+class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
     
     def apply(self, dataset: D4RLDataset, encoder_class, type="CrossDomain") -> OTRewardsExpert:
         expert = super().apply(dataset, type, encoder_class)

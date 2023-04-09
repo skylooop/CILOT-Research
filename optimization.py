@@ -13,8 +13,8 @@ def create_encoder(agent_state_shape: int, expert_state_shape: int):
     
     rng = jax.random.PRNGKey(FLAGS.seed)
     rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
-    encoder = MLP((64, expert_state_shape))
-    dummy = jax.random.normal(dummy_inp_rng, (1, 512))
+    encoder = MLP((64, 128, expert_state_shape))
+    dummy = jax.random.normal(dummy_inp_rng, (1, 512)) # for fourier features
     params = encoder.init(model_rng, dummy, training=True)
 
     optimizer = optax.adam(learning_rate=3e-4)

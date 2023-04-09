@@ -44,9 +44,9 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
-flags.DEFINE_bool("dmc_env", default=True, help="Whether DMC env is used.")
-flags.DEFINE_string("env_name", "cartpole_balance", help="Environment agent name.")
-flags.DEFINE_string("expert_env_name", "cartpole_swingup", help="Environment expert name.")
+flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
+flags.DEFINE_string("env_name", "halfcheetah-random-v2", help="Environment agent name.")
+flags.DEFINE_string("expert_env_name", "hopper-medium-replay-v2", help="Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
 flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")

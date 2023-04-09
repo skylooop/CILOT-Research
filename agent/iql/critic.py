@@ -33,7 +33,7 @@ def update_q(critic: Model, target_value: Model, batch: Batch,
              discount: float) -> Tuple[Model, InfoDict]:
     next_v = target_value(batch.next_observations)
 
-    target_q = batch.rewards + discount * batch.masks * next_v
+    target_q = batch.rewards + discount * next_v # *batch.masks
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
         q1, q2 = critic.apply({'params': critic_params}, batch.observations,
