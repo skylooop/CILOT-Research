@@ -1,6 +1,8 @@
 import collections
 from typing import Optional
-
+import os
+from absl import flags
+FLAGS = flags.FLAGS
 import gym
 import numpy as np
 
@@ -92,6 +94,58 @@ class ReplayBuffer(Dataset):
 
         self.insert_index = (self.insert_index + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
+        
+        
+class D4RLDatasetWithOTRewards:
+    @staticmethod
+    def save(dataset: D4RLDataset, rewards_expert: RewardsExpert, num_samples: int, env: gym.Env):
+        
+        print("Initializing dataset with num_samples from agent dataset")
+
+        sep = np.where(dataset.dones_float > 0.5)[0].tolist()
+        index = sep[0]
+        for i in sep:
+            index = i
+            if index > num_samples:
+                break
+                
+        # self.size = index
+        data = {}
+            
+        data["observations"] = dataset.observations[0:index]
+        data["next_observations"] = dataset.next_observations[0:index]
+        data["actions"] = dataset.actions[0:index]
+        data["masks"] = dataset.masks[0:index]
+        data["dones_float"] = dataset.dones_float[0:index]
+
+        data["rewards"] = rewards_expert.compute_rewards(
+            data["observations"],
+            data["next_observations"],
+            data["dones_float"],
+        )
+
+        np.savez(
+            os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}_{index}_ot_rewards.npz"),
+            **data,
+        )
+
+    @staticmethod
+    def load(num_samples: int, env: gym.Env):
+        dataset = dict(
+            np.load(
+                os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}_{num_samples}_ot_rewards.npz"),
+            )
+        )
+
+        return Dataset(
+            observations=dataset["observations"].astype(np.float32),
+            actions=dataset["actions"].astype(np.float32),
+            rewards=dataset["rewards"].astype(np.float32),
+            masks=dataset["masks"].astype(np.float32),
+            dones_float=dataset["dones_float"].astype(np.float32),
+            next_observations=dataset["next_observations"].astype(np.float32),
+            size=len(dataset["observations"])
+        )
 
 
 class ReplayBufferWithDynamicRewards(ReplayBuffer):
@@ -119,39 +173,6 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
 
         self.scaler = rewards_scaler
         self.expert = rewards_expert
-
-    def initialize_with_dataset(self, dataset: D4RLDataset, num_samples: int):
-        assert self.capacity > num_samples
-
-        print("Initializing dataset with num_samples from agent dataset")
-        
-        # Take each trajectory and compute OT
-        for i in range(num_samples - 1, len(dataset.observations)):
-            if dataset.dones_float[i - 1] == 1.0:
-                self.observations[0:i] = dataset.observations[0:i]
-                self.next_observations[0:i] = dataset.next_observations[0:i]
-                self.actions[0:i] = dataset.actions[0:i]
-                self.masks[0:i] = dataset.masks[0:i]
-                self.dones_float[0:i] = dataset.dones_float[0:i]
-
-                self.rewards[0:i] = self.expert.compute_rewards(
-                    self.observations[0:i],
-                    self.next_observations[0:i],
-                    self.dones_float[0:i],
-                )
-                
-                self.insert_index = i
-                self.size = i
-                break
-    
-        self.scaler.init(self.rewards[: self.size])
-        self.rewards[ :self.size] = self.scaler.scale(self.rewards[ :self.size])
-        print(
-            "rewards:",
-            np.min(self.rewards[: self.size]),
-            np.mean(self.rewards[: self.size]),
-            np.max(self.rewards[: self.size]),
-        )
 
     def insert(
         self,
