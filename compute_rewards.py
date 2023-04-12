@@ -74,11 +74,10 @@ class RewardsExpert(ABC):
         i0 = 0
         rewards = []
 
-        # number of terminal states in agent dataset
         for i1 in tqdm(np.where(dones_float > 0.5)[0].tolist()):
-            rewards.append(
-                self.compute_rewards_one_episode(observations[i0 : i1 + 1], next_observations[i0 : i1 + 1])
-            )
+            ri = self.compute_rewards_one_episode(observations[i0:i1+1], next_observations[i0:i1+1])
+            rewards.append(ri)
+            assert i1 + 1 - i0 == ri.shape[0]
             i0 = i1 + 1
         
         return np.concatenate(jax.device_get(rewards))
@@ -230,7 +229,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
 
         ot_sink = solver(ot_prob)
         transp_cost = jnp.sum(ot_sink.matrix * geom.cost_matrix, axis=0)
-
         pseudo_rewards = -transp_cost
 
         return pseudo_rewards, ot_sink.matrix
@@ -240,7 +238,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
                                 expert_trajs_weights,
                                 agent_trajectory,
                                 agent_traj_weights):
-
 
         rewards, P = self.vectorized_ot_rewards(
             batched_expert_trajs,

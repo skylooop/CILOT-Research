@@ -1,4 +1,5 @@
 import collections
+import random
 from typing import Optional
 import os
 from absl import flags
@@ -42,6 +43,23 @@ class Dataset(object):
             rewards=self.rewards[indx],
             masks=self.masks[indx],
             next_observations=self.next_observations[indx],
+        )
+
+    def sample_episode(self):
+
+        sep = [-1] + np.where(self.dones_float > 0.5)[0].tolist()
+        index = random.randint(0, len(sep) - 1)
+        i0 = sep[index] + 1
+        i1 = sep[index + 1] + 1
+
+        assert i1 > i0
+
+        return Batch(
+            observations=self.observations[i0:i1],
+            actions=self.actions[i0:i1],
+            rewards=self.rewards[i0:i1],
+            masks=self.masks[i0:i1],
+            next_observations=self.next_observations[i0:i1]
         )
 
 
@@ -98,14 +116,12 @@ class ReplayBuffer(Dataset):
         
 class D4RLDatasetWithOTRewards:
     @staticmethod
-    def save(dataset: D4RLDataset, rewards_expert: RewardsExpert, num_samples: int, env: gym.Env):
-        
-        print("Initializing dataset with num_samples from agent dataset")
+    def save(dataset: D4RLDataset, rewards_expert: RewardsExpert, num_samples: int):
 
         sep = np.where(dataset.dones_float > 0.5)[0].tolist()
-        index = sep[0]
+        index = sep[0] + 1
         for i in sep:
-            index = i
+            index = i + 1
             if index > num_samples:
                 break
                 
@@ -123,17 +139,21 @@ class D4RLDatasetWithOTRewards:
             data["next_observations"],
             data["dones_float"],
         )
+        assert data["rewards"].shape[0] == data["observations"].shape[0]
+
+        print(f"Saving dataset with {index} from agent dataset")
+        print(f"dataset_{FLAGS.env_name}_{FLAGS.expert_env_name}_ot_rewards.npz")
 
         np.savez(
-            os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}_{index}_ot_rewards.npz"),
+            os.path.join(FLAGS.path_to_save_env, f"dataset_{FLAGS.env_name}_{FLAGS.expert_env_name}_ot_rewards.npz"),
             **data,
         )
 
     @staticmethod
-    def load(num_samples: int, env: gym.Env):
+    def load():
         dataset = dict(
             np.load(
-                os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}_{num_samples}_ot_rewards.npz"),
+                os.path.join(FLAGS.path_to_save_env, f"dataset_{FLAGS.env_name}_{FLAGS.expert_env_name}_ot_rewards.npz"),
             )
         )
 
@@ -174,6 +194,31 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
         self.scaler = rewards_scaler
         self.expert = rewards_expert
 
+    def initialize_with_dataset(self, dataset: Dataset, num_samples: int):
+
+        assert self.capacity > num_samples
+        assert dataset.size >= num_samples
+
+        i = num_samples
+
+        self.observations[0:i] = dataset.observations[0:i]
+        self.actions[0:i] = dataset.actions[0:i]
+        self.masks[0:i] = dataset.masks[0:i]
+        self.dones_float[0:i] = dataset.dones_float[0:i]
+        self.next_observations[0:i] = dataset.next_observations[0:i]
+        self.rewards[0:i] = dataset.rewards[0:i]
+        self.insert_index = i
+        self.size = i
+
+        self.scaler.init(self.rewards[: self.size])
+        self.rewards[: self.size] = self.scaler.scale(self.rewards[: self.size])
+        print(
+            "rewards:",
+            np.min(self.rewards[: self.size]),
+            np.mean(self.rewards[: self.size]),
+            np.max(self.rewards[: self.size]),
+        )
+
     def insert(
         self,
         observation: np.ndarray,
@@ -202,7 +247,7 @@ class ReplayBufferWithDynamicRewards(ReplayBuffer):
             self.dones_float[i0:i1] = np.stack(self.dones_float_cur)[: i1 - i0]
             self.next_observations[i0:i1] = next_obs[: i1 - i0]
             self.rewards[i0:i1] = self.scaler.scale(
-                self.expert.compute_rewards_one_episode(obs, next_obs, train=False)
+                self.expert.compute_rewards_one_episode(obs, next_obs)
             )[ :i1 - i0]
 
             self.insert_index = i1 % self.capacity

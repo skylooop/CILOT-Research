@@ -53,9 +53,6 @@ flags.DEFINE_string(
 flags.DEFINE_integer("seed", 30, "Random seed.")
 flags.DEFINE_integer("max_steps", int(3e4), "Number of training steps.")
 flags.DEFINE_integer("log_interval", 10, "Log interval.")
-flags.DEFINE_integer(
-    "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
-)
 flags.DEFINE_integer("topk", default=15, help="Number of trajectories to use from")
 
 
@@ -109,6 +106,10 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
     expert_dataset = D4RLDataset(expert_env)
 
     encoder_class = create_encoder(agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
+    encoder_class = checkpoints.restore_checkpoint(os.path.join(FLAGS.save_dir, 'checkpoints'),
+                                                   target=encoder_class,
+                                                   step=30000,
+                                                   prefix='encoder')
 
     return OTRewardsExpertFactoryCrossDomain().apply(
         expert_dataset,
@@ -161,7 +162,7 @@ def main(_):
                 else:
                     summary_writer.add_histogram(f"training/{k}", v, i)
 
-    D4RLDatasetWithOTRewards.save(dataset, expert, 300_000, env)
+    D4RLDatasetWithOTRewards.save(dataset, expert, 300_000)
 
     checkpoints.save_checkpoint(ckpt_dir=os.path.join(FLAGS.save_dir, 'checkpoints'),
                                 target=expert.encoder_class,

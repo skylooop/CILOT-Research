@@ -1,7 +1,6 @@
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3, 2"
-os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+from flax.training import checkpoints
 
 from typing import Tuple, Union
 import gym
@@ -18,13 +17,13 @@ from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
     OTRewardsExpert,
     ExpRewardsScaler,
-    OTRewardsExpertFactoryCrossDomain,
+    OTRewardsExpertFactoryCrossDomain, OTRewardsExpertCrossDomain,
 )
 
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
-from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
+from dynamic_replay_buffer import ReplayBufferWithDynamicRewards, D4RLDatasetWithOTRewards, Dataset
 from video import VideoRecorder
 from optimization import create_encoder
 
@@ -34,11 +33,6 @@ from loggers.loggers_wrapper import InitTensorboard, InitWandb
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
-# Environmental variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-os.environ["MUJOCO_GL"] = "egl"
-os.environ["MUJOCO_EGL_DEVICES_ID"] = "4"
-os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 # Arguments
 FLAGS = flags.FLAGS
@@ -73,23 +67,23 @@ flags.DEFINE_string(
     "tmp_data",
     help="Path where .npz numpy file with environment will be saved.",
 )
-flags.DEFINE_integer("seed", 30, "Random seed.")
+flags.DEFINE_integer("seed", 3030, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
-flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
+flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 1500000, "Number of pretraining steps.")
 flags.DEFINE_integer(
-    "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
+    "replay_buffer_size", 310_000, "Replay buffer size (=max_steps if unspecified)."
 )
 flags.DEFINE_integer(
-    "init_dataset_size", 170000, "Offline data size (uses all data if unspecified)."
+    "init_dataset_size", 300_000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 flags.DEFINE_integer("topk", default=15, help="Number of trajectories to use from")
 
-def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
+def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, Dataset]:
     """
     Makes d4rl dataset from offline agent dataset and return its environment
     
@@ -116,12 +110,12 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
 
-    dataset = D4RLDataset(env)
+    dataset = D4RLDatasetWithOTRewards.load()
 
     return env, dataset
 
 
-def make_expert(agent_state_shape: int) -> OTRewardsExpert:
+def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
     """
     Building expert trajectories dataset
     """
@@ -138,7 +132,11 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpert:
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
     
-    encoder_class = create_encoder(agent_state_shape, expert_env.observation_space.shape[0])
+    encoder_class = create_encoder(agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
+    encoder_class = checkpoints.restore_checkpoint(os.path.join(FLAGS.save_dir, 'checkpoints'),
+                                                   target=encoder_class,
+                                                   step=300,
+                                                   prefix='encoder')
 
     return OTRewardsExpertFactoryCrossDomain().apply(
         expert_dataset,
@@ -170,6 +168,7 @@ def update_buffer(
         else:
             for k, v in info["episode"].items():
                 wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])
+
     return next_observation, reward
 
 
@@ -183,19 +182,19 @@ def evaluate(
     os.makedirs(FLAGS.save_dir +"/video", exist_ok=True)
     stats = {"return": [], "length": []}
     
-    video = VideoRecorder(FLAGS.save_dir, fps=20)
+    # video = VideoRecorder(FLAGS.save_dir, fps=20)
     env.reset()
-    video.init(enabled=True)
+    # video.init(enabled=True)
 
     for en in range(num_episodes):
         observation, done = env.reset(), False
-        video.record(env)
+        # video.record(env)
 
         while not done:
             action = agent.sample_actions(observation, temperature=0.0)
             observation, _, done, info = env.step(action)
-            if en < 2:
-                video.record(env)
+            # if en < 2:
+            #     video.record(env)
 
         for k in stats.keys():
             stats[k].append(info["episode"][k])
@@ -205,7 +204,7 @@ def evaluate(
 
     print(f"Saving video to: {FLAGS.save_dir}")
 
-    video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
+    # video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
             {
@@ -275,7 +274,6 @@ def main(_):
     )
 
     observation = env.reset()
-    expert.preproc.enabled = True
 
     for i in tqdm.tqdm(
         range(FLAGS.num_pretraining_steps + FLAGS.max_steps),
@@ -285,7 +283,6 @@ def main(_):
         if i >= FLAGS.num_pretraining_steps:
             
             agent.expectile = 0.8
-            #expert.preproc.enabled = False
             
             action = agent.sample_actions(
                 observation,
@@ -295,9 +292,11 @@ def main(_):
                 observation, action, replay_buffer, env, summary_writer
             )
 
+            episode = replay_buffer.sample_episode()
+            expert.warmup(episode.observations, episode.next_observations)
+
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
-        expert.warmup()
 
         if i % FLAGS.log_interval == 0:
             # k - name of loss (e.g Actor loss)

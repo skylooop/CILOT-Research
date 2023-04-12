@@ -119,16 +119,16 @@ class D4RLDataset(Dataset):
                         os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")
                     )
                 )
-        else:
-            os.makedirs("tmp_data", exist_ok=True)
-            
-            if not FLAGS.dmc_env: 
-                dataset = d4rl.qlearning_dataset(env)
-                np.savez(
-                    os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
-                    **dataset,
-                )
-                print("Saving D4RL dataset to tmp folder in current directory")
+            else:
+                os.makedirs("tmp_data", exist_ok=True)
+
+                if not FLAGS.dmc_env:
+                    dataset = d4rl.qlearning_dataset(env)
+                    np.savez(
+                        os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz"),
+                        **dataset,
+                    )
+                    print("Saving D4RL dataset to tmp folder in current directory")
             
         if clip_to_eps:
             lim = 1 - eps
