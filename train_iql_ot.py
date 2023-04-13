@@ -73,7 +73,7 @@ flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 1500000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 310_000, "Replay buffer size (=max_steps if unspecified)."
 )
@@ -282,8 +282,8 @@ def main(_):
     ):
         if i >= FLAGS.num_pretraining_steps:
             
-            agent.expectile = 0.8
-            
+        # agent.expectile = 0.8
+
             action = agent.sample_actions(
                 observation,
             )
@@ -292,11 +292,13 @@ def main(_):
                 observation, action, replay_buffer, env, summary_writer
             )
 
-            episode = replay_buffer.sample_episode()
-            expert.warmup(episode.observations, episode.next_observations)
-
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
+
+        if i % 100 == 0 and i >= FLAGS.num_pretraining_steps:
+            episode = replay_buffer.sample_episode()
+            expert_info = expert.warmup(episode.observations, episode.next_observations)
+            update_info["encoder_loss"] = expert_info["loss"]
 
         if i % FLAGS.log_interval == 0:
             # k - name of loss (e.g Actor loss)

@@ -47,12 +47,13 @@ class Dataset(object):
 
     def sample_episode(self):
 
-        sep = [-1] + np.where(self.dones_float > 0.5)[0].tolist()
-        index = random.randint(0, len(sep) - 1)
+        sep = [-1] + np.where(self.dones_float[:self.size] > 0.5)[0].tolist()
+        index = random.randint(0, len(sep) - 2)
         i0 = sep[index] + 1
         i1 = sep[index + 1] + 1
 
         assert i1 > i0
+        assert i1 <= self.size
 
         return Batch(
             observations=self.observations[i0:i1],
