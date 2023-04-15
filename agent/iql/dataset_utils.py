@@ -123,6 +123,7 @@ class D4RLDataset(Dataset):
             # We are not using actions
             dataset['actions'] = np.zeros_like(dataset['observations'].mean(-1))
             dataset['masks'] = np.zeros_like(dataset['observations'])
+            dataset['terminals'] = np.zeros_like(dataset['observations'])
         else:
             if os.path.isfile(os.path.join(FLAGS.path_to_save_env, f"dataset_{env.spec.id}.npz")):
                 dataset = dict(
@@ -145,9 +146,9 @@ class D4RLDataset(Dataset):
             dataset["actions"] = np.clip(dataset["actions"], -lim, lim)
             
         dones_float = np.zeros_like(dataset["rewards"])
-        
+
         for i in range(len(dones_float) - 1):
-            if (np.linalg.norm(dataset["observations"][i + 1] - dataset["next_observations"][i]) > 1e-6): #or dataset["terminals"][i] == 1.0):
+            if (np.linalg.norm(dataset["observations"][i + 1] - dataset["next_observations"][i]) > 1e-6) or dataset["terminals"][i] == 1.0:
                 dones_float[i] = 1
             else:
                 dones_float[i] = 0

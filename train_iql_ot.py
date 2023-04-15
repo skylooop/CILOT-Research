@@ -45,10 +45,10 @@ FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
 flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
-flags.DEFINE_string("env_name", "halfcheetah-random-v2", help="Environment agent name.")
-flags.DEFINE_string("expert_env_name", "hopper-medium-replay-v2", help="Environment expert name.")
+flags.DEFINE_string("env_name", "walker2d-random-v2", help="Environment agent name.")
+flags.DEFINE_string("expert_env_name", "halfcheetah-medium-expert-v2", help="Environment expert name.")
 
-# Define Loggers (Wandb/Tensorboard)
+# Define Loggers (Wandb/Tensorboard)s
 flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
 
 # Wandb params
@@ -84,7 +84,7 @@ flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 100000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 100000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 200000, "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 180000, "Replay buffer size (=max_steps if unspecified)."
 )
@@ -96,7 +96,7 @@ flags.DEFINE_integer("topk", default=15, help="Number of trajectories to use fro
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
-    Makes d4rl dataset from offline agent dataset and return its environment
+    Makes D4RL dataset from offline agent dataset and return its environment
     
     Args:
         env_name (str): Name of the agent environment
