@@ -3,7 +3,7 @@ import time
 import gym
 import numpy as np
 
-from .common import TimeStep
+from wrappers.common import TimeStep
 
 
 class EpisodeMonitor(gym.ActionWrapper):

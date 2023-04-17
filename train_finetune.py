@@ -5,38 +5,40 @@ import gym
 import numpy as np
 import tqdm
 from absl import app, flags
+from flax.training import checkpoints
 from tensorboardX import SummaryWriter
 
-from agent.iql.dataset_utils import D4RLDataset
+from dataset_utils import D4RLDataset, Dataset
 from agent.iql.learner import Learner
-from agent.iql.wrappers.episode_monitor import EpisodeMonitor
-from agent.iql.wrappers.single_precision import SinglePrecision
-from compute_rewards import OTRewardsExpert, OTRewardsExpertFactory, ExpRewardsScaler
-from dynamic_replay_buffer import ReplayBufferWithDynamicRewards
+from ot_replay import ReplayBufferWithDynamicRewards
+from wrappers.episode_monitor import EpisodeMonitor
+from wrappers.single_precision import SinglePrecision
+from compute_rewards import OTRewardsExpert, OTRewardsExpertFactory, ExpRewardsScaler, D4RLDatasetWithOTRewards
 from video import VideoRecorder
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('env_name', 'halfcheetah-random-v2', 'Environment name.')
+flags.DEFINE_string('env_name', 'walker2d-random-v2', 'Environment name.')
 flags.DEFINE_string('expert_env_name', 'halfcheetah-expert-v2', 'Environment name.')
 flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
-flags.DEFINE_integer('seed', 49, 'Random seed.')
+flags.DEFINE_string('path_to_save_env', './tmp/', 'Tensorboard logging dir.')
+flags.DEFINE_integer('seed', 79, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 30,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
-flags.DEFINE_integer('eval_interval', 100000, 'Eval interval.')
-flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
+flags.DEFINE_integer('eval_interval', 50000, 'Eval interval.')
+flags.DEFINE_integer('batch_size', 128, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(3e6), 'Number of training steps.')
 flags.DEFINE_integer('num_pretraining_steps', 0,
                      'Number of pretraining steps.')
-flags.DEFINE_integer('replay_buffer_size', 300000,
+flags.DEFINE_integer('replay_buffer_size', 50000,
                      'Replay buffer size (=max_steps if unspecified).')
-flags.DEFINE_integer('init_dataset_size', 200000,
+flags.DEFINE_integer('init_dataset_size', 10000,
                      'Offline data size (uses all data if unspecified).')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 
 
-def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
+def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, Dataset]:
     env = gym.make(env_name)
 
     env = EpisodeMonitor(env)
@@ -46,7 +48,8 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
 
-    dataset = D4RLDataset(env)
+    # dataset = D4RLDataset(env)
+    dataset = D4RLDatasetWithOTRewards.load()
 
     return env, dataset
 
@@ -55,8 +58,17 @@ def make_expert() -> OTRewardsExpert:
     expert_env = gym.make(FLAGS.expert_env_name)
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
-    
-    return OTRewardsExpertFactory().apply(expert_dataset)
+
+    expert = OTRewardsExpertFactory().apply(expert_dataset, )
+
+    # encoder = checkpoints.restore_checkpoint(
+    #     os.path.join(FLAGS.save_dir, 'checkpoints'),
+    #     target=expert.encoder,
+    #     step=3000,
+    #     prefix=f'encoder_{FLAGS.env_name}_{FLAGS.expert_env_name}')
+    # expert.encoder = encoder
+
+    return expert
 
 
 def evaluate(step: int, agent: Learner, env: gym.Env, num_episodes: int, summary_writer: SummaryWriter):
@@ -83,6 +95,7 @@ def evaluate(step: int, agent: Learner, env: gym.Env, num_episodes: int, summary
         stats[k] = np.mean(v)
 
     video.save(f'eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4')
+    print(f'eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4')
 
     for k, v in stats.items():
         summary_writer.add_scalar(f'evaluation/average_{k}s', v, step)
@@ -99,7 +112,8 @@ def main(_):
     expert = make_expert()
 
     action_dim = env.action_space.shape[0]
-    replay_buffer = ReplayBufferWithDynamicRewards(env.observation_space, action_dim, FLAGS.replay_buffer_size, ExpRewardsScaler(), expert)
+    replay_buffer = ReplayBufferWithDynamicRewards(env.observation_space, action_dim, FLAGS.replay_buffer_size,
+                                                   ExpRewardsScaler(), expert)
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
 
     agent = Learner(FLAGS.seed,
@@ -119,10 +133,10 @@ def main(_):
                        disable=not FLAGS.tqdm):
 
         if i == 500000:
-            agent.expectile = 0.7
+            agent.expectile = 0.8
             expert.preproc.enabled = False
 
-        if i >= 1:
+        if i >= 10000 and i % 5 == 0:
             action = agent.sample_actions(observation, )
             action = np.clip(action, -1, 1)
             next_observation, reward, done, info = env.step(action)
@@ -147,6 +161,9 @@ def main(_):
 
         batch = replay_buffer.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
+        if i % 500 == 0:
+            obs1, next_obs1 = replay_buffer.sample_episode()
+            expert.warmup(obs1, next_obs1)
 
         if i % FLAGS.log_interval == 0:
             for k, v in update_info.items():

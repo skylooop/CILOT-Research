@@ -10,7 +10,7 @@ from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
-from .common import MLP, Params, PRNGKey, default_init
+from agent.iql.common import MLP, Params, PRNGKey, default_init
 
 LOG_STD_MIN = -10.0
 LOG_STD_MAX = 2.0
@@ -36,10 +36,12 @@ class NormalTanhPolicy(nn.Module):
                       dropout_rate=self.dropout_rate)(observations,
                                                       training=training)
 
-        means = nn.Dense(self.action_dim)(outputs)
+        means = nn.Dense(self.action_dim, kernel_init=default_init())(outputs)
 
         if self.state_dependent_std:
-            log_stds = nn.Dense(self.action_dim)(outputs)
+            log_stds = nn.Dense(self.action_dim,
+                                kernel_init=default_init(
+                                    self.log_std_scale))(outputs)
         else:
             log_stds = self.param('log_stds', nn.initializers.zeros,
                                   (self.action_dim, ))

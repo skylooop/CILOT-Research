@@ -7,11 +7,10 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-from . import policy
-from . import value_net
-from .actor import update as awr_update_actor
-from .common import Batch, InfoDict, Model, PRNGKey
-from .critic import update_q, update_v
+from agent.iql import policy, value_net
+from agent.iql.actor import update as awr_update_actor
+from agent.iql.common import Batch, InfoDict, Model, PRNGKey
+from agent.iql.critic import update_q, update_v
 
 
 def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
@@ -121,7 +120,7 @@ class Learner(object):
         self.rng = rng
 
         actions = np.asarray(actions)
-        return np.clip(actions, -2, 2) #change to env max actions
+        return np.clip(actions, -1, 1)
 
     def update(self, batch: Batch) -> InfoDict:
         new_rng, new_actor, new_critic, new_value, new_target_critic, info = _update_jit(
@@ -134,4 +133,4 @@ class Learner(object):
         self.value = new_value
         self.target_critic = new_target_critic
 
-        return info
+        return jax.tree_map(np.asarray, info)

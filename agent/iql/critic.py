@@ -2,7 +2,7 @@ from typing import Tuple
 
 import jax.numpy as jnp
 
-from .common import Batch, InfoDict, Model, Params
+from agent.iql.common import Batch, InfoDict, Model, Params
 
 
 def loss(diff, expectile=0.8):

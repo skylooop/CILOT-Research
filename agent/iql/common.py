@@ -34,7 +34,7 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
-            x = nn.Dense(size)(x)
+            x = nn.Dense(size, kernel_init=default_init())(x)
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 x = self.activations(x)
                 if self.dropout_rate is not None:
@@ -81,9 +81,7 @@ class Model:
     def apply_gradient(self, loss_fn) -> Tuple[Any, 'Model']:
         grad_fn = jax.grad(loss_fn, has_aux=True)
         grads, info = grad_fn(self.params)
-        # Clip gradient
-        clip_fn = lambda x: jnp.clip(x, -1.5, 1.5)
-        grads = jax.tree_util.tree_map(clip_fn, grads)
+
         updates, new_opt_state = self.tx.update(grads, self.opt_state,
                                                 self.params)
         new_params = optax.apply_updates(self.params, updates)

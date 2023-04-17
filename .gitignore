@@ -1,12 +1,3 @@
-assets/
-__pycache__/
-tmp_data/
-d4rl/
-mine_npz/
-wandb/
-.idea
-dataAgg
-.idea/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
