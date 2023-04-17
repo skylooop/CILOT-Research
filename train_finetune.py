@@ -18,7 +18,7 @@ from video import VideoRecorder
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('env_name', 'walker2d-random-v2', 'Environment name.')
+flags.DEFINE_string('env_name', 'halfcheetah-random-v2', 'Environment name.')
 flags.DEFINE_string('expert_env_name', 'halfcheetah-expert-v2', 'Environment name.')
 flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
 flags.DEFINE_string('path_to_save_env', './tmp/', 'Tensorboard logging dir.')
@@ -27,13 +27,13 @@ flags.DEFINE_integer('eval_episodes', 30,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 50000, 'Eval interval.')
-flags.DEFINE_integer('batch_size', 128, 'Mini batch size.')
+flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(3e6), 'Number of training steps.')
 flags.DEFINE_integer('num_pretraining_steps', 0,
                      'Number of pretraining steps.')
-flags.DEFINE_integer('replay_buffer_size', 50000,
+flags.DEFINE_integer('replay_buffer_size', 300000,
                      'Replay buffer size (=max_steps if unspecified).')
-flags.DEFINE_integer('init_dataset_size', 10000,
+flags.DEFINE_integer('init_dataset_size', 200000,
                      'Offline data size (uses all data if unspecified).')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 
@@ -61,12 +61,7 @@ def make_expert() -> OTRewardsExpert:
 
     expert = OTRewardsExpertFactory().apply(expert_dataset, )
 
-    # encoder = checkpoints.restore_checkpoint(
-    #     os.path.join(FLAGS.save_dir, 'checkpoints'),
-    #     target=expert.encoder,
-    #     step=3000,
-    #     prefix=f'encoder_{FLAGS.env_name}_{FLAGS.expert_env_name}')
-    # expert.encoder = encoder
+    e
 
     return expert
 
@@ -136,7 +131,7 @@ def main(_):
             agent.expectile = 0.8
             expert.preproc.enabled = False
 
-        if i >= 10000 and i % 5 == 0:
+        if i >= 1:
             action = agent.sample_actions(observation, )
             action = np.clip(action, -1, 1)
             next_observation, reward, done, info = env.step(action)
