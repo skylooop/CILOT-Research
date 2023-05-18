@@ -1,8 +1,6 @@
 import imageio
 import os
-import numpy as np
-import sys
-
+from gymnasium.utils.save_video import save_video
 
 def make_dir(*path_parts):
     dir_path = os.path.join(*path_parts)
@@ -30,12 +28,17 @@ class VideoRecorder(object):
         if self.enabled:
             frame = env.render(
                 mode="rgb_array",
-                height=self.height,
-                width=self.width
+                # height=self.height,
+                # width=self.width
             )
             self.frames.append(frame)
 
-    def save(self, file_name):
-        if self.enabled:
-            path = os.path.join(self.save_dir, file_name)
-            imageio.mimsave(path, self.frames, fps=self.fps)
+    def save(self, file_name, fps):
+        save_video(
+                self.frames,
+                file_name,
+                fps=fps,
+            )
+        # if self.enabled:
+        #     path = os.path.join(self.save_dir, file_name)
+        #     imageio.mimsave(path, self.frames, fps=self.fps)

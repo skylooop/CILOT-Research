@@ -39,11 +39,14 @@ FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
 flags.DEFINE_bool("dmc_env", default=True, help="Whether DMC env is used.")
-flags.DEFINE_string("env_name", "cartpole_balance", help="Environment agent name.")
-flags.DEFINE_string("expert_env_name", "cartpole_swingup", help="Environment expert name.")
+flags.DEFINE_string("env_name", "cartpole_balance",
+                    help="Environment agent name.")
+flags.DEFINE_string("expert_env_name", "cartpole_swingup",
+                    help="Environment expert name.")
 
 # Define Loggers (Wandb/Tensorboard)
-flags.DEFINE_enum("logger", "Wandb", ["Wandb", "Tensorboard"], help="define loggers")
+flags.DEFINE_enum("logger", "Wandb", [
+                  "Wandb", "Tensorboard"], help="define loggers")
 
 # Wandb params
 flags.DEFINE_string("wandb_project_name", "CILOT", help="Current run name")
@@ -68,12 +71,14 @@ flags.DEFINE_string(
     help="Path where .npz numpy file with environment will be saved.",
 )
 flags.DEFINE_integer("seed", 3030, "Random seed.")
-flags.DEFINE_integer("eval_episodes", 30, "Number of episodes used for evaluation.")
+flags.DEFINE_integer("eval_episodes", 30,
+                     "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 2000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 50000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("max_steps", int(2e6), "Number of training steps.")
-flags.DEFINE_integer("num_pretraining_steps", 500000, "Number of pretraining steps.")
+flags.DEFINE_integer("num_pretraining_steps", 500000,
+                     "Number of pretraining steps.")
 flags.DEFINE_integer(
     "replay_buffer_size", 310_000, "Replay buffer size (=max_steps if unspecified)."
 )
@@ -81,12 +86,14 @@ flags.DEFINE_integer(
     "init_dataset_size", 300_000, "Offline data size (uses all data if unspecified)."
 )
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
-flags.DEFINE_integer("topk", default=15, help="Number of trajectories to use from")
+flags.DEFINE_integer("topk", default=15,
+                     help="Number of trajectories to use from")
+
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, Dataset]:
     """
     Makes d4rl dataset from offline agent dataset and return its environment
-    
+
     Args:
         env_name (str): Name of the agent environment
         seed (int): Seed
@@ -98,9 +105,9 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, Dataset]:
         domain_name = FLAGS.env_name.split("_")[0]
         task_name = '_'.join(FLAGS.env_name.split('_')[1:])
         env = dmc2gym.make(domain_name=domain_name,
-                                  task_name=task_name,
-                                  visualize_reward=False)
-    else: 
+                           task_name=task_name,
+                           visualize_reward=False)
+    else:
         env = gym.make(env_name)
 
     env = EpisodeMonitor(env)
@@ -122,17 +129,18 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
     if FLAGS.dmc_env:
         domain_name = FLAGS.expert_env_name.split("_")[0]
         task_name = '_'.join(FLAGS.expert_env_name.split('_')[1:])
-        
+
         expert_env = dmc2gym.make(domain_name=domain_name,
                                   task_name=task_name,
                                   visualize_reward=False)
     else:
         expert_env = gym.make(FLAGS.expert_env_name)
-        
+
     expert_env = SinglePrecision(expert_env)
     expert_dataset = D4RLDataset(expert_env)
-    
-    encoder_class = create_encoder(agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
+
+    encoder_class = create_encoder(
+        agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
     encoder_class = checkpoints.restore_checkpoint(os.path.join(FLAGS.save_dir, 'checkpoints'),
                                                    target=encoder_class,
                                                    step=300,
@@ -156,7 +164,8 @@ def update_buffer(
     next_observation, reward, done, info = env.step(action)
     mask = float(not done or "TimeLimit.truncated" in info)
 
-    replay_buffer.insert(observation, action, mask, float(done), next_observation)
+    replay_buffer.insert(observation, action, mask,
+                         float(done), next_observation)
 
     if done:
         next_observation = env.reset()
@@ -167,7 +176,8 @@ def update_buffer(
                 )
         else:
             for k, v in info["episode"].items():
-                wandb.log({f"training/{k}": v}, step=info["total"]["timesteps"])
+                wandb.log({f"training/{k}": v},
+                          step=info["total"]["timesteps"])
 
     return next_observation, reward
 
@@ -179,22 +189,23 @@ def evaluate(
     num_episodes: int,
     summary_writer: Union[SummaryWriter, None],
 ):
-    os.makedirs(FLAGS.save_dir +"/video", exist_ok=True)
+    os.makedirs(FLAGS.save_dir + "/video", exist_ok=True)
     stats = {"return": [], "length": []}
-    
-    # video = VideoRecorder(FLAGS.save_dir, fps=20)
+
+    video = VideoRecorder(FLAGS.save_dir, fps=20)
     env.reset()
-    # video.init(enabled=True)
+
+    video.init(enabled=True)
 
     for en in range(num_episodes):
         observation, done = env.reset(), False
-        # video.record(env)
+        video.record(env)
 
         while not done:
             action = agent.sample_actions(observation, temperature=0.0)
             observation, _, done, info = env.step(action)
-            # if en < 2:
-            #     video.record(env)
+            if en < 2:
+                video.record(env)
 
         for k in stats.keys():
             stats[k].append(info["episode"][k])
@@ -203,8 +214,8 @@ def evaluate(
         stats[k] = np.mean(v)
 
     print(f"Saving video to: {FLAGS.save_dir}")
+    video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
 
-    # video.save(f"video/eval_{FLAGS.env_name}_{FLAGS.seed}_{step}.mp4")
     if FLAGS.logger == "Wandb":
         wandb.log(
             {
@@ -225,10 +236,11 @@ def evaluate(
         for k, v in stats.items():
             wandb.log({f"Evaluation/average_{k}s": v}, step=step)
 
+
 def main(_):
-    
+
     print(f"Gym Version: {gym.__version__}")
-    
+
     if FLAGS.logger == "Tensorboard":
         summary_writer = InitTensorboard().init(
             save_dir=FLAGS.save_dir, seed=FLAGS.seed
@@ -241,15 +253,15 @@ def main(_):
             save_dir=FLAGS.save_dir,
             seed=FLAGS.seed,
             wandb_project_name=FLAGS.wandb_project_name,
-            wandb_entity=None, # change to org
+            wandb_entity=None,  # change to org
             wandb_job_type=FLAGS.wandb_job_type,
         )
         logger = "Wandb"
         summary_writer = None
-    
+
     # Making agent
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
-    
+
     # Making expert
     expert = make_expert(agent_state_shape=env.observation_space.shape[0])
 
@@ -263,7 +275,7 @@ def main(_):
     )
 
     replay_buffer.initialize_with_dataset(dataset, FLAGS.init_dataset_size)
-    
+
     agent = Learner(
         FLAGS.seed,
         env.observation_space.sample()[np.newaxis],
@@ -281,9 +293,6 @@ def main(_):
         disable=not FLAGS.tqdm,
     ):
         if i >= FLAGS.num_pretraining_steps:
-            
-        # agent.expectile = 0.8
-
             action = agent.sample_actions(
                 observation,
             )
@@ -297,7 +306,8 @@ def main(_):
 
         if i % 100 == 0 and i >= FLAGS.num_pretraining_steps:
             episode = replay_buffer.sample_episode()
-            expert_info = expert.warmup(episode.observations, episode.next_observations)
+            expert_info = expert.warmup(
+                episode.observations, episode.next_observations)
             update_info["encoder_loss"] = expert_info["loss"]
 
         if i % FLAGS.log_interval == 0:

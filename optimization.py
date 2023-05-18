@@ -11,7 +11,7 @@ import jax.random as random
 FLAGS = flags.FLAGS
 
 
-def create_encoder(agent_state_shape: int, expert_state_shape: int, lr=3e-4):
+def create_encoder(agent_state_shape: int, expert_state_shape: int, lr=1e-4):
     
     rng = jax.random.PRNGKey(FLAGS.seed)
     rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
@@ -27,6 +27,7 @@ def create_encoder(agent_state_shape: int, expert_state_shape: int, lr=3e-4):
     )
     return encoder_state
 
+# test fourier features, delete
 # @jax.jit
 # def fourier_features(input, mapping_size: int = 256):
 #     rng = jax.random.PRNGKey(FLAGS.seed)

@@ -145,3 +145,9 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+dmc2gym-master
+research/notebooks/videos
+research/**.npz
+research/agent_cartpole_balance.npz
+x_magical_datasets

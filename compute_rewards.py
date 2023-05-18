@@ -354,8 +354,7 @@ class OTRewardsExpertFactory:
         paddings.extend([(0, 0) for _ in range(x.ndim - 1)])
         return np.pad(x, paddings, mode='constant', constant_values=0.)
 
-class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory): #OTRewardsExpertCrossDomain
-    
+class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
     def apply(self, dataset: D4RLDataset, encoder_class, type="CrossDomain") -> OTRewardsExpertCrossDomain:
         expert = super().apply(dataset, type, encoder_class)
         return expert
