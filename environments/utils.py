@@ -7,6 +7,8 @@ import numpy as np
 import jax
 import warnings
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
+from icvf_dataset import Dataset
+
 warnings.filterwarnings("ignore")
 
 def make_env(modality, randomize=False):
@@ -31,12 +33,14 @@ def get_dataset(modality,
     fname = f'{dir_name}/{modality}_train.npz'
     buffer = np.load(fname)
     if keys is None: keys = buffer.keys()
+    # need to change
     return Dataset({k: buffer[k] for k in keys})
 
-def get_all_datasets(dir_name='/nfs/kun2/users/dibya/gc_pretraining/buffers/xmagical'):
+def get_all_datasets(dir_name='/home/m_bobrin/CILOT-Research/datasets/x_magical/xmagical_replay_icvf'):
     return {modality: get_dataset(modality, dir_name) for modality in ['gripper', 'shortstick', 'mediumstick', 'longstick']}
 
-def crossembodiment_dataset(not_modality, dir_name='/nfs/kun2/users/dibya/gc_pretraining/buffers/xmagical'):
+def crossembodiment_dataset(not_modality,
+                            dir_name='/home/m_bobrin/CILOT-Research/datasets/x_magical/xmagical_replay_icvf'):
     datasets = []
     keys = ['observations', 'next_observations', 'rewards', 'masks', 'dones_float']
     for i, modality in enumerate(['gripper', 'shortstick', 'mediumstick', 'longstick']):

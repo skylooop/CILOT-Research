@@ -13,6 +13,7 @@ from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
     OTRewardsExpertFactoryCrossDomain, RewardsExpert, OTRewardsExpertCrossDomain,
 )
+from environments.utils import get_dataset
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
@@ -35,8 +36,15 @@ FLAGS = flags.FLAGS
 
 # Choose agent/expert datasets
 flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
-flags.DEFINE_bool("xmagical", default=False,
+
+
+flags.DEFINE_bool("xmagical", default=True,
                   help="Whether to use cross-domain x-magical dataset.")
+flags.DEFINE_string("modality", default="gripper", 
+                    help="Which modality to use in xmagical dataset.")
+flags.DEFINE_string("dataset", default="/home/m_bobrin/CILOT-Research/datasets/x_magical/xmagical_replay_icvf",
+                    help="Path to dataset.")
+
 flags.DEFINE_string("env_name", "halfcheetah-random-v2",
                     help="Environment agent name.")
 flags.DEFINE_string("expert_env_name", "halfcheetah-medium-replay-v2",
@@ -52,7 +60,7 @@ flags.DEFINE_string(
     help="Path where .npz numpy file with environment will be saved.",
 )
 
-flags.DEFINE_integer("seed", 1337, "Random seed.")
+flags.DEFINE_integer("seed", 1000, "Random seed.")
 flags.DEFINE_integer("max_steps", int(3e4), "Number of training steps.")
 flags.DEFINE_integer("log_interval", 10, "Log interval.")
 flags.DEFINE_integer("topk", default=15,
@@ -76,8 +84,10 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
         env = dmc2gym.make(domain_name=domain_name,
                            task_name=task_name,
                            visualize_reward=False)
-    if FLAGS.xmagical:
-        pass
+    elif FLAGS.xmagical:
+        # one domain
+        # ['gripper', 'shortstick', 'mediumstick', 'longstick']
+        video_dataset = get_dataset(FLAGS.modality, FLAGS.dataset)
     else:
         env = gym.make(env_name)
 

@@ -3,7 +3,7 @@ import os.path
 from typing import Optional
 import jax
 import jax.numpy as jnp
-import d4rl
+#import d4rl
 import gym
 from flax.core.frozen_dict import FrozenDict
 from jax import tree_util
