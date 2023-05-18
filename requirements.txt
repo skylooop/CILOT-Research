@@ -1,3 +1,16 @@
 gymnasium
+dm_control
 gym==0.26
-xmagical
+x-magical
+imageio
+moviepy
+autorom[accept-rom-license]
+git+https://github.com/Farama-Foundation/d4rl@master#egg=d4rl
+tqdm
+
+#DL
+jax
+flax
+optax
+# visualization
+wandb

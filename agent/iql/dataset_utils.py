@@ -3,11 +3,10 @@ import os.path
 from typing import Optional
 import jax
 import jax.numpy as jnp
-from ott.geometry import pointcloud, costs
-from ott.problems.linear import linear_problem
-from ott.solvers.linear import sinkhorn
 import d4rl
 import gym
+from flax.core.frozen_dict import FrozenDict
+from jax import tree_util
 import numpy as np
 from tqdm import tqdm
 import os
@@ -16,11 +15,13 @@ from absl import flags
 
 FLAGS = flags.FLAGS
 
-
 Batch = collections.namedtuple(
     "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
 )
 
+def get_size(data) -> int:
+    sizes = tree_util.tree_map(lambda arr: len(arr), data)
+    return max(tree_util.tree_leaves(sizes))
 
 def split_into_trajectories(
     observations, actions, rewards, masks, dones_float, next_observations
