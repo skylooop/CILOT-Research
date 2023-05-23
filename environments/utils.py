@@ -1,3 +1,4 @@
+import gym
 import gymnasium as gym
 import xmagical
 xmagical.register_envs()
@@ -15,9 +16,9 @@ def make_env(modality, randomize=False):
     modality = modality.capitalize()
     assert modality in ['Gripper', 'Shortstick', 'Mediumstick', 'Longstick']
     if randomize:
-        env = gym.make(f'SweepToTop-{modality}-Pixels-Allo-TestLayout-v0')
+        env = gym.make(f'SweepToTop-{modality}-Pixels-Allo-TestLayout-v0', disable_env_checker =True)
     else:
-        env = gym.make(f'SweepToTop-{modality}-Pixels-Allo-Demo-v0')
+        env = gym.make(f'SweepToTop-{modality}-Pixels-Allo-Demo-v0', disable_env_checker =True)
     # in paper Authors of ICVF reported using 64x64 image size
     transform_obs = lambda obs: np.asarray(Image.fromarray(obs).resize((64, 64)))
     env = gym.wrappers.TransformObservation(env, transform_obs)

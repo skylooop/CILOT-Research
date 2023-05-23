@@ -122,7 +122,6 @@ class D4RLDataset(Dataset):
                 )
             else:
                 os.makedirs("tmp_data", exist_ok=True)
-
                 if not FLAGS.dmc_env:
                     dataset = d4rl.qlearning_dataset(env)
                     np.savez(

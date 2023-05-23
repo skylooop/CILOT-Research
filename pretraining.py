@@ -2,27 +2,31 @@ import os
 import random
 from typing import Tuple, Union
 import gym
+import gymnasium as gym
 import numpy as np
-import dmc2gym
-import tqdm
+#import dmc2gym
+from tqdm.auto import tqdm
 from absl import app, flags
 import wandb
 from flax.training import checkpoints
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
     OTRewardsExpertFactoryCrossDomain, RewardsExpert, OTRewardsExpertCrossDomain,
 )
-from environments.utils import get_dataset
+from environments.utils import get_dataset, crossembodiment_dataset
 from agent.iql.learner import Learner
 from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
-from dynamic_replay_buffer import ReplayBufferWithDynamicRewards, D4RLDatasetWithOTRewards
+from dynamic_replay_buffer import D4RLDatasetWithOTRewards
 from video import VideoRecorder
+
+from environments.utils import make_env
+from environments.gc_dataset import GCDataset
 from optimization import create_encoder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
-import warnings
 
+import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # Environmental variables
@@ -60,7 +64,7 @@ flags.DEFINE_string(
     help="Path where .npz numpy file with environment will be saved.",
 )
 
-flags.DEFINE_integer("seed", 1000, "Random seed.")
+flags.DEFINE_integer("seed", np.random.choice(100000), "Random seed.")
 flags.DEFINE_integer("max_steps", int(3e4), "Number of training steps.")
 flags.DEFINE_integer("log_interval", 10, "Log interval.")
 flags.DEFINE_integer("topk", default=15,
@@ -85,9 +89,11 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
                            task_name=task_name,
                            visualize_reward=False)
     elif FLAGS.xmagical:
-        # one domain
-        # ['gripper', 'shortstick', 'mediumstick', 'longstick']
-        video_dataset = get_dataset(FLAGS.modality, FLAGS.dataset)
+        env = make_env(FLAGS.modality)
+        #currently only expert, just for debug
+        env = SinglePrecision(env)
+        dataset = get_dataset(FLAGS.modality)
+        return env, dataset
     else:
         env = gym.make(env_name)
 
@@ -114,30 +120,42 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
         expert_env = dmc2gym.make(domain_name=domain_name,
                                   task_name=task_name,
                                   visualize_reward=False)
+    elif FLAGS.xmagical:
+        # ['gripper', 'shortstick', 'mediumstick', 'longstick']
+        if FLAGS.video_type == "same":
+            video_dataset = get_dataset(FLAGS.modality, FLAGS.dataset)
+        elif FLAGS.video_type == "cross":
+            # Collect datasets from other embodiments
+            video_dataset = crossembodiment_dataset(FLAGS.modality, FLAGS.dataset)
+        expert_dataset = GCSDataset(video_dataset)
+        example_batch = gc_dataset.sample(1) # (1 sample, img_size, img_size, 3)
+        encoder_class = create_encoder(
+            agent_state_shape, 3, # for x-magical only 3 actions available
+            lr=5e-5)
     else:
         expert_env = gym.make(FLAGS.expert_env_name)
 
-    expert_env = SinglePrecision(expert_env)
-    expert_dataset = D4RLDataset(expert_env)
+    if not FLAGS.xmagical:
+        expert_env = SinglePrecision(expert_env)
+        expert_dataset = D4RLDataset(expert_env)
 
-    encoder_class = create_encoder(
-        agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
-    # encoder_class = checkpoints.restore_checkpoint(os.path.join(FLAGS.save_dir, 'checkpoints'),
-    #                                                target=encoder_class,
-    #                                                step=30000,
-    #                                                prefix='encoder')
+        encoder_class = create_encoder(
+            agent_state_shape, expert_env.observation_space.shape[0], lr=5e-5)
+        # encoder_class = checkpoints.restore_checkpoint(os.path.join(FLAGS.save_dir, 'checkpoints'),
+        #                                                target=encoder_class,
+        #                                                step=30000,
+        #                                                prefix='encoder')
 
-    return OTRewardsExpertFactoryCrossDomain().apply(
-        expert_dataset,
-        encoder_class,
-        type="CrossDomain"
-    )
+        return OTRewardsExpertFactoryCrossDomain().apply(
+            expert_dataset,
+            encoder_class,
+            type="CrossDomain"
+        )
+    return 
 
 
 def sample_episodes(dataset: D4RLDataset, n: int, max_len=128):
-
     block_lens = []
-
     sep = [-1] + np.where(dataset.dones_float > 0.5)[0].tolist()
     index = random.randint(0, len(sep) - 1 - n)
     i0 = sep[index] + 1
@@ -160,12 +178,12 @@ def main(_):
     summary_writer = InitTensorboard().init(
         save_dir=FLAGS.save_dir, seed=FLAGS.seed
     )
-    print("Path to Tensorboard events: ", FLAGS.save_dir)
+    print("Path to Tensorboard logs: ",FLAGS.save_dir)
 
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
     expert = make_expert(agent_state_shape=env.observation_space.shape[0])
 
-    for i in tqdm.tqdm(range(FLAGS.max_steps), smoothing=0.1):
+    for i in tqdm(range(FLAGS.max_steps), smoothing=0.1):
 
         obs, next_obs, block_lens = sample_episodes(
             dataset, random.randint(1, 3))

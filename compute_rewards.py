@@ -12,12 +12,11 @@ from ott.geometry import pointcloud, costs
 from ott.geometry.costs import CostFn
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
-from sklearn import preprocessing
+#from sklearn import preprocessing
 from tqdm import tqdm
 
 from optimization import update_encoder, embed
 import typing as tp
-import torch.nn as nn
 
 from absl import flags
 
@@ -93,27 +92,27 @@ class RewardsExpert(ABC):
         ...
 
 
-class Preprocessor:
-    def __init__(self, partial_updates=True, update_preprocessor_every_episode=1):
-        self.preprocessor = preprocessing.StandardScaler()
-        self.update_preprocessor_every_episode = update_preprocessor_every_episode
-        self.partial_updates = partial_updates
-        self.e = 0
-        self.enabled = True
+# class Preprocessor:
+#     def __init__(self, partial_updates=True, update_preprocessor_every_episode=1):
+#         self.preprocessor = preprocessing.StandardScaler()
+#         self.update_preprocessor_every_episode = update_preprocessor_every_episode
+#         self.partial_updates = partial_updates
+#         self.e = 0
+#         self.enabled = True
 
-    def fit(self, observations):
-        if self.e % self.update_preprocessor_every_episode == 0 and self.enabled:
-            self.e += 1
-            if self.partial_updates:
-                self.preprocessor.partial_fit(observations)
-            else:
-                self.preprocessor.fit(observations)
+#     def fit(self, observations):
+#         if self.e % self.update_preprocessor_every_episode == 0 and self.enabled:
+#             self.e += 1
+#             if self.partial_updates:
+#                 self.preprocessor.partial_fit(observations)
+#             else:
+#                 self.preprocessor.fit(observations)
 
-    def transform(self, observations):
-        if self.enabled:
-            return self.preprocessor.transform(observations)
-        else:
-            return observations
+#     def transform(self, observations):
+#         if self.enabled:
+#             return self.preprocessor.transform(observations)
+#         else:
+#             return observations
 
 
 class OTRewardsExpert(RewardsExpert):
@@ -175,9 +174,6 @@ class OTRewardsExpertCrossDomain(RewardsExpert):
         
         self.cost_fn = cost_fn
         self.epsilon = epsilon
-
-        # self.preproc = Preprocessor()
-        # self.states_pair_buffer = ListBuffer(n=10)
         
         self.encoder_class = encoder_class
         
@@ -355,7 +351,7 @@ class OTRewardsExpertFactory:
         return np.pad(x, paddings, mode='constant', constant_values=0.)
 
 class OTRewardsExpertFactoryCrossDomain(OTRewardsExpertFactory):
-    def apply(self, dataset: D4RLDataset, encoder_class, type="CrossDomain") -> OTRewardsExpertCrossDomain:
+    def apply(self, dataset: tp.Any, encoder_class, type="CrossDomain") -> OTRewardsExpertCrossDomain:
         expert = super().apply(dataset, type, encoder_class)
         return expert
 
