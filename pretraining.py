@@ -1,4 +1,7 @@
 import os
+import sys
+sys.path.append(".")
+
 import random
 from typing import Tuple
 import gym
@@ -20,6 +23,8 @@ from agent.iql.wrappers.episode_monitor import EpisodeMonitor
 from agent.iql.wrappers.single_precision import SinglePrecision
 from dynamic_replay_buffer import D4RLDatasetWithOTRewards
 from video import VideoRecorder
+
+from jaxrl_m.vision import encoders
 
 from environments.utils import make_env
 from environments.gc_dataset import GCSDataset
@@ -74,6 +79,11 @@ flags.DEFINE_string(
 flags.DEFINE_integer("seed", np.random.choice(100000), "Random seed.")
 flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
 flags.DEFINE_integer("log_interval", 10, "Log interval.")
+
+def build_encoder():
+    encoder = encoders['impala']()
+    return encoder
+
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -135,9 +145,8 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
         expert_dataset = GCSDataset(video_dataset)
         example_batch = expert_dataset.sample(1) # (1 sample, img_size, img_size, 3)
         # TODO: make encoder of images here, then pass to create_encoder class
-        encoder_class = create_encoder(
-            agent_state_shape, 3, # for x-magical only 3 actions available
-            lr=5e-5)
+        #encoder_base = build_encoder(encoders['impala']())
+        encoder_class = create_encoder()
     else:
         expert_env = gym.make(FLAGS.expert_env_name)
 
