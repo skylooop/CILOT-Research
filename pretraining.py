@@ -1,6 +1,6 @@
 import os
 import random
-from typing import Tuple, Union
+from typing import Tuple
 import gym
 import gymnasium as gym
 import numpy as np
@@ -12,7 +12,7 @@ from flax.training import checkpoints
 #from tensorboardX import SummaryWriter
 from agent.iql.dataset_utils import D4RLDataset
 from compute_rewards import (
-    OTRewardsExpertFactoryCrossDomain, RewardsExpert, OTRewardsExpertCrossDomain,
+    OTRewardsExpertFactoryCrossDomain, OTRewardsExpertCrossDomain,
 )
 from environments.utils import get_dataset, crossembodiment_dataset
 from agent.iql.learner import Learner
@@ -22,7 +22,7 @@ from dynamic_replay_buffer import D4RLDatasetWithOTRewards
 from video import VideoRecorder
 
 from environments.utils import make_env
-from environments.gc_dataset import GCDataset
+from environments.gc_dataset import GCSDataset
 from optimization import create_encoder
 from loggers.loggers_wrapper import InitTensorboard, InitWandb
 
@@ -38,26 +38,33 @@ os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 # Arguments
 FLAGS = flags.FLAGS
 
-# Choose agent/expert datasets
+# DMC environment settings
 flags.DEFINE_bool("dmc_env", default=False, help="Whether DMC env is used.")
 
-
+# XMagical settings
 flags.DEFINE_bool("xmagical", default=True,
                   help="Whether to use cross-domain x-magical dataset.")
 flags.DEFINE_string("modality", default="gripper", 
                     help="Which modality to use in xmagical dataset.")
 flags.DEFINE_string("dataset", default="/home/m_bobrin/CILOT-Research/datasets/x_magical/xmagical_replay_icvf",
-                    help="Path to dataset.")
+                    help="Path to xmagical dataset.")
+flags.DEFINE_integer("batch_size", default=32,
+                     help="Number of samples to sample from expert dataset")
+flags.DEFINE_enum('video_type', 'cross', [
+                  'same', 'cross', 'all'], 'Type of video data to train on (only modality, all but modality, or all)')
 
+# MuJoco environment settings
 flags.DEFINE_string("env_name", "halfcheetah-random-v2",
                     help="Environment agent name.")
 flags.DEFINE_string("expert_env_name", "halfcheetah-medium-replay-v2",
                     help="Environment expert name.")
 
+# Global settings
 flags.DEFINE_string(
     "save_dir", "assets/", "Logger logging dir."
 )
-
+flags.DEFINE_integer("topk", default=15,
+                     help="Number of trajectories to use.")
 flags.DEFINE_string(
     "path_to_save_env",
     "tmp_data",
@@ -65,11 +72,8 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_integer("seed", np.random.choice(100000), "Random seed.")
-flags.DEFINE_integer("max_steps", int(3e4), "Number of training steps.")
+flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
 flags.DEFINE_integer("log_interval", 10, "Log interval.")
-flags.DEFINE_integer("topk", default=15,
-                     help="Number of trajectories to use from")
-
 
 def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset]:
     """
@@ -90,9 +94,10 @@ def make_env_and_dataset(env_name: str, seed: int) -> Tuple[gym.Env, D4RLDataset
                            visualize_reward=False)
     elif FLAGS.xmagical:
         env = make_env(FLAGS.modality)
-        #currently only expert, just for debug
         env = SinglePrecision(env)
-        dataset = get_dataset(FLAGS.modality)
+        # taking same as expert
+        # TODO: load dummy agent dataset, traned to 50% sac or smth
+        dataset = get_dataset(FLAGS.modality, dir_name=FLAGS.dataset)
         return env, dataset
     else:
         env = gym.make(env_name)
@@ -128,7 +133,8 @@ def make_expert(agent_state_shape: int) -> OTRewardsExpertCrossDomain:
             # Collect datasets from other embodiments
             video_dataset = crossembodiment_dataset(FLAGS.modality, FLAGS.dataset)
         expert_dataset = GCSDataset(video_dataset)
-        example_batch = gc_dataset.sample(1) # (1 sample, img_size, img_size, 3)
+        example_batch = expert_dataset.sample(1) # (1 sample, img_size, img_size, 3)
+        # TODO: make encoder of images here, then pass to create_encoder class
         encoder_class = create_encoder(
             agent_state_shape, 3, # for x-magical only 3 actions available
             lr=5e-5)
@@ -173,7 +179,7 @@ def sample_episodes(dataset: D4RLDataset, n: int, max_len=128):
 
 
 def main(_):
-    print(f"Gym Version: {gym.__version__}")
+    print(f"Gymnasium Version: {gym.__version__}")
 
     summary_writer = InitTensorboard().init(
         save_dir=FLAGS.save_dir, seed=FLAGS.seed

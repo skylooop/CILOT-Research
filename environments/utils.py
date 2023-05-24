@@ -1,6 +1,6 @@
 import gym
-import gymnasium as gym
 import xmagical
+import gymnasium as gym
 xmagical.register_envs()
 
 from PIL import Image

@@ -11,11 +11,11 @@ import jax.random as random
 FLAGS = flags.FLAGS
 
 
-def create_encoder(agent_state_shape: int, expert_state_shape: int, lr=1e-4):
+def create_encoder(agent_state_shape: int, expert_state_shape: int, lr: float=5e-5):
     
     rng = jax.random.PRNGKey(FLAGS.seed)
     rng, dummy_inp_rng, model_rng = jax.random.split(rng, 3)
-    encoder = MLP((64, 64, expert_state_shape))
+    encoder = MLP((256, 256, expert_state_shape))
     dummy = jax.random.normal(dummy_inp_rng, (1, agent_state_shape))
     params = encoder.init(model_rng, dummy, training=True)
 
